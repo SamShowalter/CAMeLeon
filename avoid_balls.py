@@ -37,7 +37,7 @@ class AvoidGame:
                 food_num = 3,
 
                 # Clock rate, base time reward, win_reward
-                 clock_rate = 100, base_reward = 0.001, eat_reward = 10, win_reward = 500):
+                clock_rate = 100, base_reward = 0.001, eat_reward = 10, win_reward = 500):
 
         #Game  Metadata Information
         self.show = show
@@ -58,6 +58,7 @@ class AvoidGame:
         self.ball_speed_max = ball_speed_max
         self.difficulty_update_rate = difficulty_update_rate_sec
         self.base_reward = base_reward
+        self.win_reward = win_reward
 
         # Roster of predator balls and agent
         self.roster = []
@@ -272,19 +273,18 @@ class AvoidGame:
 
         #Human play game
         if self.human_play:
-            # self.check_for_wall_collisions_human_play()
-            win = self.check_win_conditions()
 
-            if not win:
-                self.check_for_ball_collisions_human_play()
+            self.check_for_ball_collisions_human_play()
 
-                self.check_for_food_collisions()
+            self.check_for_food_collisions()
 
-                for player in self.roster:
-                    self.network_input(player)
+            for player in self.roster:
+                self.network_input(player)
 
             # Game has been won
-            else:
+            # self.check_for_wall_collisions_human_play()
+            win = self.check_win_conditions()
+            if win:
                 self.active_game = False
                 self.game_stop = time.time()
 
@@ -358,7 +358,8 @@ class AvoidGame:
             and event.type == pygame.KEYDOWN \
             and event.key == pygame.K_SPACE:
 
-            self = AvoidGame(human_play = self.human_play, speedup = self.speedup, show_stats = self.show_stats)
+            self = AvoidGame(human_play = self.human_play, speedup = self.speedup, show_stats = self.show_stats,
+                             clock_rate = self.clock_rate)
             self.on_execute()
 
         for player in self.roster:
