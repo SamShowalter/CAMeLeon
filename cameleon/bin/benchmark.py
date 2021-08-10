@@ -30,12 +30,12 @@ from cameleon.utils.env import str2wrapper, str2bool, wrap_env
 
 
 parser = argparse.ArgumentParser("Speed Benchmark for Cameleon Gym Games")
-parser.add_argument("--env_name",default = None,required = True,help="Cameleon or gym environment to load")
-parser.add_argument("--num_resets", default=200, type = int, help = "Number of environment resets to time for reset rendering test")
-parser.add_argument("--num_viz_frames", default=1000, type = int, help = "Number of frame to examine for visual rendering test")
-parser.add_argument("--num_enc_frames", default=5000, type = int, help = "Number of frame to examine for encoded rendering test")
+parser.add_argument("--env-name",required = True,help="Cameleon or gym environment to load")
+parser.add_argument("--num-resets", default=1000, type = int, help = "Number of environment resets to time for reset rendering test")
+parser.add_argument("--num-viz-frames", default=1000, type = int, help = "Number of frame to examine for visual rendering test")
+parser.add_argument("--num-enc-frames", default=5000, type = int, help = "Number of frame to examine for encoded rendering test")
 parser.add_argument("--visual", default=False, type = str2bool, help="Whether or not to check visual rendering")
-parser.add_argument('--wrappers', default="", type = str2wrapper,  help=
+parser.add_argument('--wrappers', default="encoding_only", type = str2wrapper,  help=
                   """
                   Wrappers to encode the environment observation in different ways. Wrappers will be executed left to right, and the options are as follow:
                   - partial_obs.{obs_size}:         Partial observability - must include size (odd int)

@@ -110,6 +110,18 @@ def str2str(s):
         return None
     return s
 
+
+def str2int(s):
+    """Test if a string exists
+
+    :s: String
+
+    """
+    if (s == ""):
+        return None
+    assert int(s), "ERROR: input is not an integer"
+    return int(s)
+
 def wrap_env(env,wrappers):
     """Wrap environment
 
@@ -157,7 +169,6 @@ def str2wrapper(wrappers):
         "encoding_only": ImgObsWrapper,
         "rgb_only": RGBImgObsWrapper,
         "canniballs_one_hot":CanniballsOneHotWrapper,
-        # "episode_writer":EpisodeWriterWrapper
     }
 
     final_wrappers = []

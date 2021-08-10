@@ -16,6 +16,7 @@ import sys
 import os
 import glob
 import re
+from collections import OrderedDict
 from tqdm import tqdm
 
 sys.path.append("../interestingness-xdrl")
@@ -38,11 +39,11 @@ class CameleonInterestingnessEnvironment(Environment):
                  framework,
                  outdir = "data/interestingness/",
                  action_factors = ['left','right','up','down'],
-                 rollout_regex =r'(\d+)_ep(\d+)_s(\d+)_r*(.+).[ph]kl',
+                 rollout_regex =r'[a-z\d]*_ep(\d+)_s(\d+)_r*(.+).[ph]kl',
                  use_hickle = True,
                  seed = None):
-        Environment.__init__(self, seed)
 
+        Environment.__init__(self, seed)
         self.outdir = outdir
 
         # Make if it does not exist
@@ -59,7 +60,7 @@ class CameleonInterestingnessEnvironment(Environment):
         self.framework = framework
         self.action_factors = action_factors
         self.last_frame = None
-        self.episodes = {}
+        self.episodes = OrderedDict()
 
 
     def _init_episode(self,
@@ -67,12 +68,16 @@ class CameleonInterestingnessEnvironment(Environment):
                       episode_filepath,
                       steps,
                       reward,
-                      pid):
-        """TODO: Docstring for _init_episode.
+                      epochs):
+        """Docstring for _init_episode.
 
-        :episode_id: TODO
-        :episode_filepath: TODO
-        :returns: TODO
+        :episode_id: Int:       ID of episode
+        :episode_filepath: Str: Episode path
+        :steps: int:            Number of timesteps in episode
+        :reward: float:         Total reward for episode
+        :epochs: int:           Number of epochs model trained for before rollout
+
+        :returns: Dict:         Subdictionary for specific episode
 
         """
         assert episode_id not in self.episodes,\
@@ -81,7 +86,7 @@ class CameleonInterestingnessEnvironment(Environment):
 
         self.episodes[episode_id] = {"data":{},
                                      "steps":steps,
-                                     "pid":pid,
+                                     "epochs_trained":epochs,
                                      "total_reward":reward,
                                      "filepath":episode_filepath}
 
@@ -92,17 +97,18 @@ class CameleonInterestingnessEnvironment(Environment):
         """Add timestep to episode
         artifact
 
-        :timestep: Int: Timestep
-        :timestep_data: Dict: timestep information
-        :episode: Dict: subsection of self.episodes
+        :timestep: Int:       Timestep
+        :timestep_data: Dict: Timestep-specific data
+        :episode: Dict:       subdictionary of self.episodes
 
         """
         t = timestep_data
-        episode[timestep] = EnvironmentData(
-                                frames = t['info']['frame'],
-                                observations = t['observation'],
-                                actions = t["action"],
-                                new_episodes = (timestep == 0))
+        episode[timestep] = {
+                                "frame":       t['info']['frame'],
+                                "observation": t['observation'],
+                                "action":      t["action"],
+                                "new_episode": (timestep == 0)
+                            }
 
 
     def add_episode(self,
@@ -111,23 +117,29 @@ class CameleonInterestingnessEnvironment(Environment):
                       episode_filepath,
                       steps,
                       reward,
-                      pid):
-        """Add episode data to agent repo
+                      epochs):
+        """Add episode data to environment store
 
-        :episode: Dict: Episode rollout saved by agent
+        :episode_data:Dict:     Rollout data
+        :episode_id: Int:       ID of episode
+        :episode_filepath: Str: Episode path
+        :steps: int:            Number of timesteps in episode
+        :reward: float:         Total reward for episode
+        :epochs: int:           Number of epochs model trained for before rollout
 
         """
-        episode_store = self._init_episode(episode_id,
+        episode = self._init_episode(episode_id,
                                            episode_filepath,
                                            steps,
                                            reward,
-                                           pid)
+                                           epochs)
 
-        assert len(episode_data) == episode_store["steps"],\
+        assert len(episode_data) == episode["steps"],\
             """ERROR: Episode metadata step and length mismatch:
-            Step: {} - Length: {}""".format(episode_store["step"],
+            Step: {} - Length: {}""".format(episode["steps"],
                                             len(episode_data))
 
+        episode_store = episode['data']
         for i in range(len(episode_data)):
             self._add_timestep(i,
                                episode_data[i],
@@ -137,7 +149,8 @@ class CameleonInterestingnessEnvironment(Environment):
     def _get_rollout_paths(self):
         """Get path to all rollout pickle
         files in directory
-        :returns: TODO
+
+        :returns: list[str]: List of rollout files (recursive)
 
         """
         self.rollout_paths = glob.glob(self.rollout_dir + "**/*.{}"\
@@ -146,9 +159,38 @@ class CameleonInterestingnessEnvironment(Environment):
             "ERROR: Rollout directory did not find any files"
         return self.rollout_paths
 
+    def flatten_for_interestingness_v1(self):
+        """Flatten data dictionary to maintain
+        same data format as previously specified
+        by original interestingness module
+
+        :returns: EnvironmentData: All environment interaction data
+
+        """
+        frames = []
+        observations = []
+        actions = []
+        new_episodes = []
+
+        for e,v in self.episodes.items():
+            for i in range(len(v['data'])):
+                data = v['data'][i]
+
+                frames.append(data['frame'])
+                observations.append(data['observation'])
+                actions.append(data['action'])
+                new_episodes.append(data['new_episode'])
+
+        return EnvironmentData(frames = frames,
+                               observations = observations,
+                               actions = actions,
+                               new_episodes = new_episodes)
+
+
     def collect_all_data(self):
         """Load rollouts
-        :returns: TODO
+
+        :returns: EnvironmentData: All environment interaction data
 
         """
         paths = self._get_rollout_paths()
@@ -159,10 +201,9 @@ class CameleonInterestingnessEnvironment(Environment):
             matches = re.match(self.rollout_path_regex,episode_id)
             if matches:
                 components = matches.groups()
-                pid = int(components[0])
-                # episode_pid_num = int(components[1])
-                steps = int(components[2])
-                total_reward = int(components[3].replace("n",'-'))
+                epochs = int(components[0])
+                steps = int(components[1])
+                total_reward = int(components[2].replace("n",'-'))
 
                 episode_data = self.read_compressed(rollout)
 
@@ -171,15 +212,22 @@ class CameleonInterestingnessEnvironment(Environment):
                                              rollout,
                                              steps,
                                              total_reward,
-                                             pid)
+                                             epochs)
 
         self.out_root = '{}{}_{}_{}'.format(self.outdir,
                                 self.agent_name,
                                 self.framework,
                                 self.env_name)
 
+        # Return flattened EnvironmentData variable
+        return self.flatten_for_interestingness_v1()
+
     def save(self):
         """Save self as a pickle file
+
+        NOTE: This is not currently used since
+        interestingness is run while this object
+        is still in memory
 
         """
 

@@ -5,6 +5,8 @@
 #             Date:           2021-07-12
 #
 #    Wraps the observation space of the environment and passes it to agent to train
+#    NOTE: ALL wrappers implemented here must support returning their observation with .gen_obs()
+#    ALSO: Wrappers that reduce the amount of information present (RGB, ENC only) should be wrapped LAST
 #
 #################################################################################
 
@@ -15,6 +17,7 @@
 
 import os
 import copy
+import hashlib
 import sys
 import numpy as np
 
@@ -23,13 +26,69 @@ from gym import error, spaces, utils
 from gym_minigrid.wrappers import *
 
 from cameleon.grid import OBJECT_TO_IDX, COLOR_TO_IDX, STATE_TO_IDX
-from cameleon.utils.general import _tup_equal, _write_pkl
+from cameleon.utils.general import _tup_equal, _write_pkl, _read_pkl, _write_hkl, _read_hkl
 
 #################################################################################
 #  Parial Observability Wrapper
 #################################################################################
 
+class RGBImgObsWrapper(gym.core.ObservationWrapper):
+    """
+    Wrapper to use fully observable RGB image as the only observation output,
+    no language/mission. This can be used to have the agent to solve the
+    gridworld in pixel space.
+    """
 
+    def __init__(self, env, tile_size=8):
+        super().__init__(env)
+
+        self.tile_size = tile_size
+
+        self.observation_space.spaces['image'] = spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.env.width * tile_size, self.env.height * tile_size, 3),
+            dtype='uint8'
+        )
+
+    def observation(self, obs):
+        env = self.unwrapped
+
+        rgb_img = env.render(
+            mode='rgb_array',
+            highlight=False,
+            tile_size=self.tilesize
+        )
+
+        return {
+            'mission': obs['mission'],
+            'image': rgb_img}
+
+    def gen_obs(self):
+        """Generate observation
+
+        """
+        obs = self.env.gen_obs()
+        return self.observation(obs)
+
+class ImgObsWrapper(gym.core.ObservationWrapper):
+    """
+    Use the image as the only observation output, no language/mission.
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        self.observation_space = env.observation_space.spaces['image']
+
+    def gen_obs(self):
+        """Generate observation
+
+        """
+        obs = self.env.gen_obs()
+        return self.observation(obs)
+
+    def observation(self, obs):
+        return obs['image']
 
 class PartialObsWrapper(gym.core.Wrapper):
 
@@ -152,6 +211,12 @@ class PartialObsWrapper(gym.core.Wrapper):
 
         return obs_view
 
+    def gen_obs(self):
+        """Generate observation
+
+        """
+        obs = self.env.gen_obs()
+        return self.get_obs_view(obs['image'])
 
     def step(self, action):
 
@@ -178,7 +243,7 @@ class CanniballsOneHotWrapper(gym.core.ObservationWrapper):
         super().__init__(env)
         self.observation_space.spaces["image"] = spaces.Box(
             low=0,
-            high=255,
+            high=1,
             shape=(self.env.width, self.env.height, 4),  # number of cells
             dtype='uint8'
         )
@@ -229,6 +294,13 @@ class CanniballsOneHotWrapper(gym.core.ObservationWrapper):
             info['frame'] = copy.deepcopy(self.env.grid.img)
             return self.observation(observation), reward, done, info
 
+    def gen_obs(self):
+        """Generate observation
+
+        """
+        obs = self.env.gen_obs()
+        return self.observation(obs)
+
     def observation(self, obs):
         """Step function for canniballs
 
@@ -247,22 +319,29 @@ class CanniballsOneHotWrapper(gym.core.ObservationWrapper):
 ##################################################################################
 
 
-class DEPRECATED_EpisodeWriterWrapper(gym.core.Wrapper):
+class EpisodeWriterWrapper(gym.core.Wrapper):
 
     """Wrapper to record environment and agent interactions
-    for later use with CAML analysis
+    for later use with CAML analysis with RANDOM AGENTS. This
+    is NOT the preferred method of collecting rollouts - use
+    callbacks with an early checkpoint instead
 
     """
 
-    def __init__(self,env, outdir = None):
+    def __init__(self,env, args = None):
         super().__init__(env)
-        self.outdir = outdir
+        self.outdir = args.writer_dir
+        self.args = args
         # This needs to be -1 because of weird issues with
         # the parallel processing of rollouts
         self.episode_num = -1
-        self.step_num = 0
         self.reward_total = 0
         self.rollout = {}
+        self.obs_hash = None
+
+        self.write_compressed = _write_hkl if args.use_hickle else _write_pkl
+        self.read_compressed = _read_hkl if args.use_hickle else _read_pkl
+        self.ext = "hkl" if args.use_hickle else "pkl"
 
 
     def write_episode(self):
@@ -270,12 +349,18 @@ class DEPRECATED_EpisodeWriterWrapper(gym.core.Wrapper):
         :returns: TODO
 
         """
+
         # and len(self.rollout) > 0
-        self.episode_id = "{}_ep{}_r{}.pkl".format(os.getpid(),
+        self.episode_id = "{}_ep0_s{}_r{}_pid{}-{}.{}".format(
+                                         self.obs_hash,
+                                         self.env.step_count,
+                                         str(round(self.reward_total)).replace("-","n"),
                                          self.episode_num,
-                                         str(round(self.reward_total)).replace("-","n"))
+                                         os.getpid(),
+                                         self.args.ext)
+
         if self.outdir and len(self.rollout) > 0:
-            _write_pkl(self.rollout,
+            self.write_compressed(self.rollout,
                   self.outdir + self.episode_id)
 
     def reset_writer(self):
@@ -296,7 +381,8 @@ class DEPRECATED_EpisodeWriterWrapper(gym.core.Wrapper):
         self.rollout = {}
 
         obs = self.env.reset(**kwargs)
-        self.rollout[self.env.step_count] = {"obs":obs}
+        self.obs_hash = hashlib.shake_256(str(obs).encode()).hexdigest(6)
+        self.rollout[self.env.step_count] = {"observation":obs}
         return obs
 
     def step(self, action):
@@ -323,7 +409,7 @@ class DEPRECATED_EpisodeWriterWrapper(gym.core.Wrapper):
 
         # Store new observation if not done
         if not done:
-            self.rollout[step] = {"obs":obs}
+            self.rollout[step] = {"observation":obs}
 
         # Return necessary information
         # No need to keep sending info around

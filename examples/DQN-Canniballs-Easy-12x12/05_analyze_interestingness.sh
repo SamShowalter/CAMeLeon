@@ -1,24 +1,27 @@
 #!/bin/bash
-
 #################################################################################
 #
-#             Script Title:   Speed benchmarking test for Environment
+#             Script Title:   Analyze interestingness from rollouts
 #             Author:         Sam Showalter
 #             Date:           2021-07-12
 #
 #################################################################################
 
-
 #######################################################################
 # Set variable names
 #######################################################################
 
-ENV_NAME="Cameleon-Canniballs-Hard-12x12-v0"
-NUM_ENC_FRAMES=5000
-NUM_VIZ_FRAMES=100
-NUM_RESETS=500
-WRAPPERS="canniballs_one_hot,encoding_only"
-VISUAL="false"
+# Model and environment information
+ENV_NAME="Cameleon-Canniballs-Easy-12x12-v0"
+MODEL_NAME="DQN"
+FRAMEWORK="torch"
+
+# Date timestamp and rollout path information / output directory
+DATE=`date "+%Y.%m.%d"`
+ROLLOUTS_PATH="rollouts/DQN_torch_Cameleon-Canniballs-Medium-12x12-v0_ep100_ts0_rs42_w5_$DATE/"
+OUTPUT_DIR="data/interestingness/"
+ACTION_FACTORS="direction"
+USE_HICKLE="true"
 
 #######################################################################
 # Run the script for training
@@ -26,14 +29,15 @@ VISUAL="false"
 
 # change to project root directory (in case invoked from other dir)
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-cd "$DIR/../"
+cd "$DIR/../../"
 clear
 
 # Run the script
-python -m cameleon.bin.benchmark \
+python -m cameleon.bin.analyze_interestingness \
   --env-name=$ENV_NAME \
-  --num-enc-frames=$NUM_ENC_FRAMES \
-  --num-viz-frames=$NUM_VIZ_FRAMES \
-  --num-resets=$NUM_RESETS \
-  --wrappers=$WRAPPERS \
-  --visual=$VISUAL
+  --model-name=$MODEL_NAME \
+  --outdir=$OUTPUT_DIR \
+  --framework=$FRAMEWORK \
+  --rollouts-path=$ROLLOUTS_PATH \
+  --use-hickle=$USE_HICKLE \
+  --action-factors=$ACTION_FACTORS \

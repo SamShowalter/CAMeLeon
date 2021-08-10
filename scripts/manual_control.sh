@@ -32,8 +32,8 @@ clear
 
 # Run the script
 python -m cameleon.bin.manual_control \
-  --env_name=$ENV_NAME \
-  --key_handler=$KEY_HANDLER \
+  --env-name=$ENV_NAME \
+  --key-handler=$KEY_HANDLER \
   --seed=$SEED \
-  --tile_size=$TILE_SIZE \
+  --tile-size=$TILE_SIZE \
   --verbose=$VERBOSE

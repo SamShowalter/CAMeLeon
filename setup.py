@@ -11,22 +11,22 @@ setup(name='cameleon',
       scripts=[
       ],
       install_requires=[
+          # 'python >= 3.8',
           'gym',
           'gym-minigrid',
-          'numpy'
+          'numpy',
           'matplotlib',
           'tqdm',
           'ray[default]',
           'ray[rllib]',
+          'ray[tune]',
           'torch',
           'tensorflow',
-          'ast',
-          'pickle',
+          # 'pickle',
+          'hickle',
           'argparse',
           'pathlib',
           'datetime',
-          'hashlib',
-
       ],
       extras_require={
           'caml': [

@@ -16,6 +16,8 @@ import sys
 
 import tensorflow as tf
 import torch
+from scipy.special import softmax
+import numpy as np
 
 from cameleon.policy_extractors.rllib import BaseRLlibPolicyExtractor
 
@@ -35,14 +37,16 @@ class DQNExtractor(BaseRLlibPolicyExtractor):
                  episode,
                  worker,
                  framework,
-                 env):
+                 env,
+                 episode_start):
 
         BaseRLlibPolicyExtractor.__init__(self,
                                           model,
                                           episode,
                                           worker,
                                           framework,
-                                          env)
+                                          env,
+                                          episode_start)
         self.q_vals = None
 
     def get_action_logits(self):
@@ -51,12 +55,12 @@ class DQNExtractor(BaseRLlibPolicyExtractor):
         :returns: logits
 
         """
-        if self.logits is not None:
-            return self.logits
+        if self.q_vals is not None:
+            return self.q_vals
 
-        _ = self.get_q_function_dist()
+        self.get_q_function_dist()
 
-        return self.logits
+        return self.q_vals
 
 
     def get_value_function_estimate(self):
@@ -87,6 +91,19 @@ class DQNExtractor(BaseRLlibPolicyExtractor):
         return vf
 
 
+    def get_action_dist(self):
+        """Get Q function distribution
+
+        :returns: Q(a,s)
+
+        """
+
+        if (not self.q_vals):
+            self.get_q_function_dist()
+
+        return [softmax(self.q_vals.flatten(),
+                       axis = 0)]
+
     def get_q_function_dist(self):
         """Get Q function distribution
 
@@ -100,20 +117,18 @@ class DQNExtractor(BaseRLlibPolicyExtractor):
         # Returns a list of three items:
         # - (action_scores, logits, dist) if num_atoms == 1, otherwise
         # - (action_scores, z, support_logits_per_action, logits, dist)
-        q_vals, self.logits,_ = self.policy.model.get_q_value_distributions(self.model_out)
+        q_vals, _,_ = self.policy.model.get_q_value_distributions(self.model_out)
 
         if (self.framework == "tf"):
             q_vals = q_vals.eval()
-            self.logits = self.logits.eval()
 
         if (self.framework == "tf2"):
             q_vals = q_vals.numpy()
-            self.logits = self.logits.numpy()
 
         elif (self.framework == "torch"):
             q_vals = q_vals.detach().cpu().numpy()
-            self.logits = self.logits.detach().cpu().numpy()
 
         self.q_vals = q_vals
-        return q_vals[0]
+        return q_vals
+
 

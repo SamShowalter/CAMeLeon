@@ -56,7 +56,7 @@ def step(action,args):
     Wrapper around step function of the environment
     """
     obs, reward, done, info = args.env.step(action)
-    # print(obs['image'][:,:,2])
+    # print(info['image'][:,:,2])
 
     if args.verbose:
         print('step=%s, reward=%.2f' % (args.env.step_count, reward))
@@ -146,14 +146,14 @@ def str2key_handler(key_handler):
 parser = argparse.ArgumentParser("Manual Control for Cameleon-MiniGrid Environment")
 
 # Args
-parser.add_argument("--env_name",
-                    help="Gym environment (including Cameleon or MiniGrid) to load",
-                    default='Cameleon-Canniballs-21x21-v0')
+parser.add_argument("--env-name",
+                    required = True,
+                    help="Gym environment (including Cameleon or MiniGrid) to load")
 parser.add_argument("--seed",type=int,
-                    help="Random seed to generate the environment with",default = -1)
-parser.add_argument("--tile_size",type=int,
+                    help="Random seed to generate the environment with",default = 42)
+parser.add_argument("--tile-size",type=int,
                     help="Size at which to render tiles",default=32)
-parser.add_argument("--key_handler",type=str2key_handler,default = "cameleon",
+parser.add_argument("--key-handler",type=str2key_handler,default = "cameleon",
                     help = "Key handler to take in keyboard input from user. Depends on game played")
 parser.add_argument('--verbose', default = True, type=str2bool,
                     help = "Determine if output should be sent to console")

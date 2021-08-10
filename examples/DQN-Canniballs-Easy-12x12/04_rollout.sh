@@ -11,42 +11,33 @@
 # Set variable names
 #######################################################################
 
-OUTPUT_DIR="rollouts/"
-STORE_VIDEO="true"
-ENV_NAME="Cameleon-Canniballs-Medium-12x12-v0"
-
-# Usually makes 5x what you put here, not sure why
-EPISODES=1
-TIMESTEPS=0
-
-CHECKPOINT_PATH="models/DQN_torch_Cameleon-Canniballs-Medium-12x12-v0_2021.08.05/checkpoint_008000/checkpoint-8000"
-NO_RENDER="true"
+# Environment, wrappers and model
+ENV_NAME="Cameleon-Canniballs-Easy-12x12-v0"
 MODEL_NAME="DQN"
 WRAPPERS="canniballs_one_hot,encoding_only"
-NUM_WORKERS=5
-NUM_GPUS=1
+
+# Number of episodes and steps to roll out for
+NUM_EPISODES=100
+NUM_TIMESTEPS=0
+
+#Set the checkpoint dynamically for example
+DATE=`date "+%Y.%m.%d"`
+CHECKPOINT_PATH="models/DQN_torch_Cameleon-Canniballs-Easy-12x12-v0_$DATE/checkpoint_010000/checkpoint-10000"
+OUTPUT_DIR="rollouts/"
+STORE_VIDEO="true"
+NO_RENDER="true"
 SEED=42
-USE_HICKLE="true"
+
+# Hardware requirements
+NUM_WORKERS=4
+NUM_GPUS=1
+
+# Hickle only useful when
+# compressing full image
+# frame information
+USE_HICKLE="false"
 NO_FRAME="true"
-STORE_IMAGO="false"
-IMAGO_DIR="data/imago/"
-IMAGO_FEATURES="observation,action_dist,action_logits,value_function"
-BUNDLE_ONLY="false"
-BUNDLE_ONLY_DIR=""
-
-# Rollout process can pick up trained config if a checkpoint is given
-# otherwise, specify information here
 CONFIG="{}"
-
-CONFIG="""{
-'framework':'torch',
-'model':{'dim':12,
-         'conv_filters':[[16,[4,4],1],
-                         [32,[3,3],2],
-                         [512,[6,6],1]]
-        }
-}"""
-
 
 # Need to remove whitespaces
 CONFIG="${CONFIG//[$'\t\r\n ']}"
@@ -57,7 +48,7 @@ CONFIG="${CONFIG//[$'\t\r\n ']}"
 
 # change to project root directory (in case invoked from other dir)
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-cd "$DIR/../"
+cd "$DIR/../../"
 clear
 
 # Run the script
@@ -65,8 +56,8 @@ python -m cameleon.bin.rollout \
   --model-name=$MODEL_NAME \
   --env-name=$ENV_NAME \
   --checkpoint-path=$CHECKPOINT_PATH \
-  --num-episodes=$EPISODES \
-  --num-timesteps=$TIMESTEPS \
+  --num-episodes=$NUM_EPISODES \
+  --num-timesteps=$NUM_TIMESTEPS \
   --outdir=$OUTPUT_DIR \
   --store-video=$STORE_VIDEO \
   --no-render=$NO_RENDER \
@@ -76,9 +67,4 @@ python -m cameleon.bin.rollout \
   --seed=$SEED \
   --no-frame=$NO_FRAME \
   --use-hickle=$USE_HICKLE \
-  --store-imago=$STORE_IMAGO \
-  --imago-dir=$IMAGO_DIR \
-  --imago-features=$IMAGO_FEATURES \
-  --bundle-only=$BUNDLE_ONLY \
-  --bundle-only-dir=$BUNDLE_ONLY_DIR \
   --config=$CONFIG 

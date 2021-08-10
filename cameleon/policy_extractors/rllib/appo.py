@@ -32,14 +32,16 @@ class APPOExtractor(BaseRLlibPolicyExtractor):
                  episode,
                  worker,
                  framework,
-                 env):
+                 env,
+                 episode_start):
 
         BaseRLlibPolicyExtractor.__init__(self,
                                           model,
                                           episode,
                                           worker,
                                           framework,
-                                          env)
+                                          env,
+                                          episode_start)
 
     def get_action_logits(self):
         """Get logits from base policy prediction
@@ -98,7 +100,7 @@ class APPOExtractor(BaseRLlibPolicyExtractor):
             logits = logits.detach().cpu().numpy()
 
         self.logits = logits
-        return action_dist
+        return [action_dist]
 
     def get_value_function_estimate(self):
         """Get value function estimate for

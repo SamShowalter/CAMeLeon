@@ -29,7 +29,8 @@ def build_rllib_policy_extractor(model,
                                 episode,
                                 worker,
                                 framework = "tf2",
-                                env = None):
+                                env = None,
+                                episode_start = False):
     """ Build a policy extractor for rllib just like how
     RLlib builds trainers (or my best attempt at that anyway)
 
@@ -46,7 +47,8 @@ def build_rllib_policy_extractor(model,
                              episode,
                              worker,
                              framework,
-                             env)
+                             env,
+                             episode_start)
 
 #################################################################################
 #   Build RLlib Policy Extractor
@@ -61,7 +63,8 @@ class BaseRLlibPolicyExtractor(ABC):
                  episode,
                  worker,
                  framework = "tf2",
-                 env = None):
+                 env = None,
+                 episode_start = None):
         """
         :model: str:            Type of policy used
         :episode: Episode:      current episode object from Rllib
@@ -77,7 +80,8 @@ class BaseRLlibPolicyExtractor(ABC):
 
         self.policy = self._get_policy()
         self.observation = self._get_last_observation()
-        self.model_out = self._get_model_out()
+        if not episode_start:
+            self.model_out = self._get_model_out()
         self.logits = None
 
         assert self.framework in ['tf','tf2', 'torch'],\
@@ -94,7 +98,6 @@ class BaseRLlibPolicyExtractor(ABC):
             return np.expand_dims(tensor, axis = axis)
         elif isinstance(tensor, torch.Tensor):
             return torch.unsqueeze(tensor, dim = axis)
-
 
 
     def _get_model_out(self):
@@ -135,7 +138,10 @@ class BaseRLlibPolicyExtractor(ABC):
 
         """
 
-        return self.episode.last_observation_for()
+        obs = self.episode.last_observation_for()
+        if isinstance(obs,tuple):
+            obs = obs[0]
+        return obs
 
     def get_last_pi_info(self):
         """Get last pi info stats,
@@ -238,7 +244,7 @@ class BaseRLlibPolicyExtractor(ABC):
 
         """
 
-        return None
+        return []
 
     def get_q_function_dist(self):
         """TODO: Docstring for get_q_function_dist.
@@ -248,7 +254,7 @@ class BaseRLlibPolicyExtractor(ABC):
 
         """
 
-        return None
+        return []
 
 
 #################################################################################

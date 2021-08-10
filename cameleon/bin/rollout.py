@@ -14,16 +14,14 @@
 import argparse
 import collections
 import copy
+import shutil
 import glob
+import re
 import os
-# os.environ["FORCE_CUDA"]="1"
-# os.environ["CUDA_VISIBLE_DEVICES"]="0"
-# os.environ["CUDA_HOME"]="/usr/local/cuda"
 import sys
 from datetime import datetime as dt
-
-import ray.rllib.models.modelv2
-
+import numpy as np
+from tqdm import tqdm
 
 # Ray stuff
 import ray
@@ -45,9 +43,11 @@ from gym import wrappers as gym_wrappers
 
 # Custom imports
 import cameleon.envs
-from cameleon.utils.env import load_env, str2bool, str2model, \
+from cameleon.wrappers import EpisodeWriterWrapper
+from cameleon.utils.env import load_env, str2bool, str2model, str2int, str2list,\
     str2wrapper, wrap_env, str2str, cameleon_logger_creator, str2dict, str2framework
-from cameleon.callbacks.agent.rllib import RLlibCallbacks
+from cameleon.utils.general import _read_hkl, _write_hkl, _read_pkl
+from cameleon.callbacks.agent.rllib import RLlibIxdrlCallbacks
 
 #######################################################################
 # Create parser
@@ -61,69 +61,86 @@ def create_parser(parser_creator=None):
 
     parser = parser_creator(formatter_class=argparse.RawDescriptionHelpFormatter,
                             description="Roll out a reinforcement learning agent given a checkpoint.")
-    parser.add_argument("--checkpoint",type=str2str,default=None,nargs="?",help="(Optional) checkpoint from which to roll out. "
-                                                                "If none given, will use an initial (untrained) Trainer.")
 
+    # Required arguments
     required_named = parser.add_argument_group("required named arguments")
+    required_named.add_argument("--checkpoint-path",type=str2str,required = True,
+                        help="Checkpoint from which to roll out. MUST be provided to run competency analysis")
+    required_named.add_argument("--model-name",type=str,required=True,
+                        help="The algorithm or model to train. This may refer to the name "
+                        "of a built-on algorithm (e.g. RLLib's `DQN` or `PPO`), or a "
+                        "user-defined trainable function or class registered in the "
+                        "tune registry.")
+    required_named.add_argument("--env-name",type=str,required = True,
+                        help="The environment specifier to use. This could be an openAI gym "
+                        "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
+                        "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).")
 
-    required_named.add_argument("--run",type=str,required=True,
-        help="The algorithm or model to train. This may refer to the name "
-        "of a built-on algorithm (e.g. RLLib's `DQN` or `PPO`), or a "
-        "user-defined trainable function or class registered in the "
-        "tune registry.")
-    required_named.add_argument("--env",type=str,
-        help="The environment specifier to use. This could be an openAI gym "
-        "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
-        "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).")
+    # Optional arguments
     parser.add_argument("--local-mode",default = False,action="store_true",
-        help="Run ray in local mode for easier debugging.")
+                        help="Run ray in local mode for easier debugging.")
     parser.add_argument("--no-render",default=False,type=str2bool,
-        help="Suppress rendering of the environment.")
+                        help="Suppress rendering of the environment.")
     parser.add_argument("--use-hickle",default=False,type=str2bool,
-        help="Use gzip hickle over more standard pickle compression")
+                        help="Use gzip hickle over more standard pickle compression")
     parser.add_argument("--no-frame",default=True,type=str2bool,
-        help="Whether or not to store frames from rollouts. Can be a huge memory burden")
+                        help="Whether or not to store frames from rollouts. Can be a huge memory burden")
     parser.add_argument("--framework",default=None,type=str2framework,
-        help="Framework for model in which rollouts given. This should be provided by config in most cases")
+                        help="Framework for model in which rollouts given. This should be provided by config in most cases")
     parser.add_argument("--store-video",type=str2bool,default=True,
-        help="Specifies the directory into which videos of all episode "
-        "rollouts will be stored.")
-    parser.add_argument("--steps",default=10000,type = int,
-        help="Number of timesteps to roll out. Rollout will also stop if "
-        "`--episodes` limit is reached first. A value of 0 means no "
-        "limitation on the number of timesteps run.")
-    parser.add_argument("--episodes",default=0,type = int,
-        help="Number of complete episodes to roll out. Rollout will also stop "
-        "if `--steps` (timesteps) limit is reached first. A value of 0 means "
-        "no limitation on the number of episodes run.")
-    parser.add_argument("--out", default=None, help="Output filename.")
+                        help="Specifies the directory into which videos of all episode "
+                        "rollouts will be stored.")
+    parser.add_argument("--num-timesteps",default=0,type = int,
+                        help="Number of timesteps to roll out. Rollout will also stop if "
+                        "`--num-episodes` limit is reached first. A value of 0 means no "
+                        "limitation on the number of timesteps run.")
+    parser.add_argument("--seed",default=None,type = str2int,
+                        help="Random seed for rollout execution. If not provided, excecution"
+                        "is not seeded and cannot be reproduced.")
+    parser.add_argument("--num-episodes",default=0,type = int,
+                        help="Number of complete episodes to roll out. Rollout will also stop "
+                        "if `--num-timesteps` limit is reached first. A value of 0 means "
+                        "no limitation on the number of episodes run.")
+    parser.add_argument("--outdir", default=None,
+                        help="Output directory for rollouts")
+    parser.add_argument("--imago-dir", default="data/imago/",
+                        help="Output filepath for imago data")
+    parser.add_argument("--bundle-only", default=False,type=str2bool,
+                        help="Option to just bundle existing rollouts. If chosen, a filepath needs to be specified")
+    parser.add_argument("--bundle-only-dir", default=None,type=str2str,
+                        help="If only bundling of existing rollouts needed, provide access to appropriate directory")
+    parser.add_argument("--imago-features",
+                        default="observation,action_dist,action_logits,value_function",
+                        type=str2list, help="Features to collect and store for imagination")
+    parser.add_argument("--store-imago", default=False,type=str2bool,
+                        help="Boolean on whether to collect and store imago dataset")
     parser.add_argument("--config",default="{}",type=str2dict,
-        help="Algorithm-specific configuration (e.g. env, hyperparams). "
-        "Gets merged with loaded configuration from checkpoint file and "
-        "`evaluation_config` settings therein.")
+                        help="Algorithm-specific configuration (e.g. env, hyperparams). "
+                        "Gets merged with loaded configuration from checkpoint file and "
+                        "`evaluation_config` settings therein.")
     parser.add_argument('--num-workers', default = 4, type = int,
-        help="Number of rollout workers to utilize during training")
+                        help="Number of rollout workers to utilize during training")
     parser.add_argument('--num-gpus', default = 1,type = int,
-        help="Number of GPUs to utilize during training. Generally this is not bottleneck, so 1 is often sufficient")
+                        help="Number of GPUs to utilize during training. Generally this is not bottleneck, so 1 is often sufficient")
     parser.add_argument("--save-info",default=False,action="store_true",
-        help="Save the info field generated by the step() method, "
-        "as well as the action, observations, rewards and done fields.")
+                        help="Save the info field generated by the step() method, "
+                        "as well as the action, observations, rewards and done fields.")
     parser.add_argument("--use-shelve",default=False,action="store_true",
-        help="Save rollouts into a python shelf file (will save each episode "
-        "as it is generated). An output filename must be set using --out.")
+                        help="Save rollouts into a python shelf file (will save each episode "
+                        "as it is generated). An output filename must be set using --out.")
     parser.add_argument("--track-progress",default=False,action="store_true",
-        help="Write progress to a temporary file (updated "
-        "after each episode). An output filename must be set using --out; "
-        "the progress file will live in the same folder.")
+                        help="Write progress to a temporary file (updated "
+                        "after each episode). An output filename must be set using --out; "
+                        "the progress file will live in the same folder.")
     parser.add_argument('--wrappers', default="", type = str2wrapper,  help=
-                  """
-                    Wrappers to encode the environment observation in different ways. Wrappers will be executed left to right,
-                        and the options are as follows (example: 'encoding_only,canniballs_one_hot'):
-                  - partial_obs.{obs_size}:         Partial observability - must include size (odd int)
-                  - encoding_only:                  Provides only the encoded representation of the environment
-                  - rgb_only:                       Provides only the RGB screen of environment
-                  - canniballs_one_hot              Canniballs specific one-hot
-                  """)
+                        """
+                            Wrappers to encode the environment observation in different ways. Wrappers will be executed left to right,
+                                and the options are as follows (example: 'encoding_only,canniballs_one_hot'):
+                        - partial_obs.{obs_size}:         Partial observability - must include size (odd int)
+                        - encoding_only:                  Provides only the encoded representation of the environment
+                        - rgb_only:                       Provides only the RGB screen of environment
+                        - canniballs_one_hot              Canniballs specific one-hot
+                        """)
     return parser
 
 #######################################################################
@@ -143,7 +160,14 @@ def default_policy_agent_mapping(unused_agent_id):
 
 
 def keep_going(steps, num_steps, episodes, num_episodes):
-    """Determine whether we've collected enough data"""
+    """Determine whether we've collected enough data
+
+    :steps: int:        Current step
+    :num_steps: int:    Total number of steps
+    :episodes: int:     Current episode
+    :num_episodes: int: Total number of episodes
+
+    """
     # If num_episodes is set, stop if limit reached.
     if num_episodes and episodes >= num_episodes:
         return False
@@ -154,17 +178,46 @@ def keep_going(steps, num_steps, episodes, num_episodes):
     return True
 
 def get_rollout_tags(writer_files,
-                     writer_dict):
+                     writer_dict,
+                     ext):
     """Get tags for making rollout tag
     folder names
 
-    :writer_files: dict:
+    :writer_files: List: List of output rollout files
+    :writer_dict: Dict:  Dictionary to store rollout files
+    :ext: str:           File extension (pkl, hkl)
 
     """
     # Fill writer dict with tags
     for file in writer_files:
-        tag = "_".join(file.split("/")[-1].split("_")[:2])
+        # Get tag for video
+        tag = file.split("/")[-1]\
+                       .split("_")[-1]\
+                       .replace(".{}".format(ext),"")
+
         writer_dict[tag] = file
+
+def _update_bundle_configuration(args):
+    """Update bundle configuration to reflect
+    correct random seed if rollouts not run during
+    the execution (e.g. bundle-only execution)
+
+    :args: Argparse.Args: User-defined arguments
+
+    """
+    name_components = args.bundle_only_dir.split("/")[-1].split("_")
+    try:
+        num_workers = int(name_components[-2].replace("w",""))
+        random_seed = int(name_components[-3].replace("rs",""))
+        args.seed = random_seed
+        args.num_workers = num_workers
+    except:
+        print("Random seed information could not be extracted"
+              " from provided bundle-only filename. Be sure that"
+              " your provided random seed and number of workers"
+              " matches the rollout execution.\n")
+
+    args.writer_dir = args.bundle_only_dir
 
 def delete_dummy_video_files(pid_max,
                              subdirs):
@@ -172,7 +225,8 @@ def delete_dummy_video_files(pid_max,
     video file per worker. This removes it.
     The id is always the last (max)
 
-    :pid_max: dict: max pid filenames
+    :pid_max: dict: Max pid filenames
+    :subdirs: dict: Dictionary of subdirectories by (pid, ep)
 
     """
 
@@ -183,7 +237,7 @@ def delete_dummy_video_files(pid_max,
         ep = pid_max[pid]
 
         # Remove garbage subdir
-        del subdirs[(pid,ep)]
+        subdirs.remove((pid,ep))
         os.remove(file)
 
 def build_writer_dir(args):
@@ -193,14 +247,17 @@ def build_writer_dir(args):
 
     """
     # Add writer to environment
-    args.writer_dir = "{}{}_{}_{}_ep{}_{}/".format(args.out,
-                                                args.run,
+    args.writer_dir = "{}{}_{}_{}_ep{}_ts{}_rs{}_w{}_{}/".format(args.outdir,
+                                                args.model_name,
                                                 args.config['framework'],
-                                                args.env,
-                                                args.episodes,
+                                                args.env_name,
+                                                args.num_episodes,
+                                                args.num_timesteps,
+                                                args.seed,
+                                                args.num_workers,
                                                 dt.now().strftime("%Y.%m.%d"))
 
-    if not os.path.exists(args.writer_dir):
+    if not os.path.exists(args.writer_dir) and not args.bundle_only:
         os.makedirs(args.writer_dir)
 
 
@@ -214,39 +271,42 @@ def bundle_rollouts(subdirs,
     videos are created. Otherwise pickles
     stay loose in the directory
 
-    :subdirs: dict: Subdirectory names
+    :subdirs: Set:      Set of pid,episode combos
+    :writer_dict: Dict: Dictionary to store rollout files
+    :writer_dir: str:   Base path to write rollouts
+    :ext: str:          File extension (pkl, hkl)
+    :monitor: bool:     Whether or not video files were generated
 
     """
 
     # Bundle everything together
-    for (pid,ep),rollout_subdir in subdirs.items():
+    for (pid,ep) in subdirs:
 
 
         # Suffix and filepath - I know, this is messy.
-        writer_file = writer_dict["{}_ep{}".format(pid,ep)]
-        writer_suffix = "_".join(writer_file.split("/")[-1].split("_")[-2:])
-        rollout_subdir = "{}_{}".format(rollout_subdir,
-                                        writer_suffix.replace(".{}"\
-                                                              .format(ext),""))
+        writer_file = writer_dict["pid{}-{}".format(ep,pid)]
+        writer_suffix = re.sub(r'_pid(\d+)-(\d+).[ph]kl', '',
+                               writer_file.split("/")[-1])
 
+        # Make rollout subdirectory
+        rollout_subdir = "{}/{}".format(writer_dir,
+                                        writer_suffix.split("_")[0])
         #Make directory if it does not exist
         if not os.path.exists(rollout_subdir):
             os.mkdir(rollout_subdir)
 
 
         os.replace(writer_file,
-                "{}/{}_ep{}_{}".format(
-                                        rollout_subdir,
-                                        pid,ep,writer_suffix))
+                "{}/{}.{}".format(rollout_subdir,
+                               writer_suffix,
+                                  ext))
 
         # Only move if they exist
         if monitor:
             os.replace("{}{}_ep{}_video.mp4".format(writer_dir,pid,ep),
-                    "{}/{}_ep{}_{}_video.mp4".format(
+                    "{}/{}_video.mp4".format(
                                             rollout_subdir,
-                                            pid,ep,
-                                            writer_suffix.replace(".{}"\
-                                                              .format(ext),"")))
+                                            writer_suffix))
 
 def rename_video_files(writer_dir,
                        video_files,
@@ -255,10 +315,10 @@ def rename_video_files(writer_dir,
     """Rename video files to match writer
     output. OpenAI names the videos first
 
-    :writer_dir: str: Writer directory for files
+    :writer_dir: str:   Writer directory for files
     :video_files: List: List of video files
-    :subdirs: Dict: Dictionary of subdirectories to make
-    :pid_max: Dict: Dictionary of dummy video ids
+    :subdirs: Set:      Set of (pid, episode) tuples
+    :pid_max: Dict:     Dictionary of dummy video ids
 
     """
     for v in video_files:
@@ -273,10 +333,10 @@ def rename_video_files(writer_dir,
             pid = int(name_components[0])
             ep = int(name_components[1].replace('video',''))
 
-            # Make rollout sub directory
-            rollout_subdir = "{}{}_ep{}".format(writer_dir,pid,ep)
-            subdirs[(pid,ep)] = rollout_subdir
+            # Add video to registry
+            subdirs.add((pid,ep))
 
+            # Add new video name
             new_video_name = "{}{}_ep{}_video.mp4".format(
                                           writer_dir,
                                           pid,
@@ -309,8 +369,8 @@ def check_for_saved_config(args):
     config = None
 
     # If there is a checkpoint, find parameters
-    if args.checkpoint:
-        config_dir = os.path.dirname(args.checkpoint)
+    if args.checkpoint_path:
+        config_dir = os.path.dirname(args.checkpoint_path)
         config_path = os.path.join(config_dir, "params.pkl")
         # Try parent directory.
         if not os.path.exists(config_path):
@@ -323,14 +383,14 @@ def check_for_saved_config(args):
     # If no pkl file found, require command line `--config`.
     else:
         # If no config in given checkpoint -> Error.
-        if args.checkpoint:
+        if args.checkpoint_path:
             raise ValueError(
                 "Could not find params.pkl in either the checkpoint dir or "
                 "its parent directory AND no `--config` given on command "
                 "line!")
 
         # Use default config for given agent.
-        _, config = get_trainer_class(args.run, return_config=True)
+        _, config = get_trainer_class(args.model_name, return_config=True)
 
 
     # Make sure worker 0 has an Env.
@@ -348,10 +408,10 @@ def check_for_saved_config(args):
     # Adds any custom arguments here
     config = merge_dicts(config, args.config)
 
-    if not args.env:
+    if not args.env_name:
         if not config.get("env"):
             parser.error("the following arguments are required: --env")
-        args.env = config.get("env")
+        args.env_name = config.get("env")
 
     # Make sure we have evaluation workers.
     if not config.get("evaluation_num_workers"):
@@ -368,11 +428,12 @@ def check_for_saved_config(args):
 def load_config(args):
     """Load configuration given all inputs
 
-    :args: Argparse args
-    :returns: Configj
+    :args: Argparse Args: User defined arguments
+    :returns: Dict:       Config
 
     """
 
+    # Set up config
     args.config = check_for_saved_config(args)
     config = args.config
 
@@ -384,6 +445,11 @@ def load_config(args):
     config["render_env"] = not args.no_render
     config["num_workers"] = args.num_workers
     config["num_gpus"] = args.num_gpus
+    args.ext ="hkl" if args.use_hickle else "pkl"
+    args.read_compressed = _read_hkl if args.use_hickle else _read_pkl
+
+    # Add random seed
+    config["seed"] = args.seed
 
     # Only set if  provided explicitly and there is not checkpoint
     if args.framework:
@@ -402,11 +468,108 @@ def load_config(args):
 
     return config
 
+#######################################################################
+# Gather up relevant information for imagination, then save
+#######################################################################
+
+def _init_imago_dict(fields):
+    """Initialize imago dictionary
+    for collection
+
+    :fields: List: List of fields for dict keys
+
+    :returns: Dict: Imago collection dictionary
+
+    """
+
+    imago_dict = {}
+    for f in fields:
+        imago_dict[f] = []
+
+    return imago_dict
+
+def _add_imago_sample(sample,imago_dict):
+    """Add sample to imago_dict
+
+    :sample: Dict:     Rollout sample
+    :imago_dict: Dict: Imago dictionary store
+
+    """
+    for k,store in imago_dict.items():
+        # Only flatten artifacts that should be vectors
+        if (isinstance(sample[k],np.ndarray) and
+            ((len(sample[k].shape) == 2) and
+             sample[k].shape[0] == 1)):
+            sample[k] = sample[k].flatten()
+        store.append(sample[k])
 
 
-#######################################################################
-# Cleanup Script
-#######################################################################
+def _bundle_imago_dict(imago_dict):
+    """Bundle imago dictionary for better
+    compression
+
+    :imago_dict: Dictionary of imago information
+
+    """
+    for k,v in imago_dict.items():
+        # 1D array
+        if not isinstance(v[0],np.ndarray):
+            imago_dict[k] = np.array(v)
+
+        #2+D array
+        else:
+            imago_dict[k] = np.stack(v,axis=0)
+
+def collect_imago_dataset(args):
+    """Collect imago dataset information and store
+    for training. Saves to data/imago
+
+    :args: Argparse.Args: Argparse arguments
+
+    """
+
+
+    imago_dict = _init_imago_dict(args.imago_features)
+    rollout_paths = glob.glob(args.writer_dir + "/**/*.{}"\
+                                    .format(args.ext),recursive=True)
+
+    # Rollout regex
+    rollout_regex =r'(\d+)_ep(\d+)_s(\d+)_r*(.+).[ph]kl'
+
+    # Rollout path file iteration
+    num_rollouts = 0
+    for i in tqdm(range(len(rollout_paths))):
+        rollout_path = rollout_paths[i]
+        episode_id = rollout_path.split("/")[-1]
+        matches = re.match(rollout_regex, episode_id)
+        if matches:
+            num_rollouts += 1
+
+            # Iterate through timesteps
+            data = args.read_compressed(rollout_path)
+            for i in range(len(data.keys())):
+                _add_imago_sample(data[i],
+                                  imago_dict)
+
+    # Bundle imago information
+    _bundle_imago_dict(imago_dict)
+
+
+    # Store the dictionary in the correct folder
+    imago_dir = "{}{}_{}_{}".format(args.imago_dir,
+                                    args.model_name,
+                                  args.framework,
+                                  args.env_name)
+
+    if not os.path.exists(imago_dir):
+        os.makedirs(imago_dir)
+    imago_filename = "{}/imago_rollouts-{}_rs{}_w{}.hkl".format(imago_dir,
+                                                            num_rollouts,
+                                                            args.seed,
+                                                            args.num_workers)
+
+    _write_hkl(imago_dict, imago_filename)
+
 
 
 def cleanup(monitor,
@@ -423,7 +586,7 @@ def cleanup(monitor,
 
     :outdir: str:     Output directory for pickle artifact
     :writer_dir: str: Directory where artifacts saved
-    :video_dir: str:  Video directory for rollouts
+    :ext: str:        Filename extension (pkl, hkl)
 
     """
 
@@ -440,7 +603,7 @@ def cleanup(monitor,
     pid_max = {}
     pid_max['files'] = {}
     writer_dict = {}
-    subdirs = {}
+    subdirs = set()
 
     # Rename video files
     rename_video_files(writer_dir,
@@ -454,7 +617,8 @@ def cleanup(monitor,
 
     # Get folder names for all rollouts (by tag)
     get_rollout_tags(writer_files,
-                     writer_dict)
+                     writer_dict,
+                     ext = ext)
 
     # Bundle all of the artifacts together
     bundle_rollouts(subdirs,
@@ -474,7 +638,8 @@ def rollout(agent,
             num_steps,
             num_episodes=0,
             no_render=True,
-            video_dir=None):
+            video_dir=None,
+            args = None):
     """
     Rollout execution function. This was largely inherited from RLlib.
 
@@ -485,9 +650,9 @@ def rollout(agent,
     :num_episodes: Int:   Number of episodes
     :no_render: bool:     Whether to render environment for visual inspection
     :video_dir: str:      Video storage path
+    :args: Argparse.Args: User defined arguments
 
     """
-
 
     policy_agent_mapping = default_policy_agent_mapping
     # Normal case: Agent was setup correctly with an evaluation WorkerSet,
@@ -497,7 +662,6 @@ def rollout(agent,
         steps = 0
         episodes = 0
 
-        # print(env.agent)
         while keep_going(steps, num_steps, episodes, num_episodes):
             eval_result = agent.evaluate()["evaluation"]
 
@@ -520,28 +684,13 @@ def rollout(agent,
         policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
-    # Agent has neither evaluation- nor rollout workers.
-    else:
 
-        from gym import envs
-        if envs.registry.env_specs.get(agent.config["env"]):
-            # if environment is gym environment, load from gym
-            env = gym.make(agent.config["env"])
-        else:
-            # if environment registered ray environment, load from ray
-            env_creator = _global_registry.get(ENV_CREATOR,
-                                               agent.config["env"])
-            env_context = EnvContext(
-                agent.config["env_config"] or {}, worker_index=0)
-            env = env_creator(env_context)
-        multiagent = False
-        try:
-            policy_map = {DEFAULT_POLICY_ID: agent.policy}
-        except AttributeError:
-            raise AttributeError(
-                "Agent ({}) does not have a `policy` property! This is needed "
-                "for performing (trained) agent rollouts.".format(agent))
-        use_lstm = {DEFAULT_POLICY_ID: False}
+    print("""\nWARNING: You are either spinning up a random agent (untrained, no checkpoint)
+         or you have a malformed checkpoint object with no evaluation workers.
+         You may run rollouts in this way, but rollouts will be slow. Instead, read in a
+         checkpoint from the very beginning of your model training for faster rollouts.\n\n
+         NOTE: You CANNOT run interestingness analysis with these rollouts,
+               as they only include information about the environment""")
 
     action_init = {
         p: flatten_to_single_ndarray(m.action_space.sample())
@@ -556,6 +705,9 @@ def rollout(agent,
             directory=video_dir,
             video_callable=lambda _: True,
             force=True)
+
+    # Make episode writer
+    env = EpisodeWriterWrapper(env, args = args)
 
     steps = 0
     episodes = 0
@@ -625,6 +777,57 @@ def rollout(agent,
 ########################################################################
 ## Run method for rollout information
 ########################################################################
+def run_rollouts(args,config):
+    """Run rollouts (if not bundling
+    existing rollouts)
+
+    :args: Argparse.Args: User defined arguments
+    :config: Dict: Execution Configuration
+
+    """
+
+    # Make sure configuration has the correct outpath
+    config['callbacks'] = lambda: RLlibIxdrlCallbacks(
+                                                        args = args,
+                                                        config = config)
+
+    #Spin up Ray
+    ray.init(local_mode=args.local_mode)
+
+    # Set up environment
+    env = gym.make(args.env_name)
+
+    # Wrap environment
+    env = wrap_env(env, args.wrappers)
+
+    # Register environment with Ray
+    register_env(args.env_name, lambda config: env)
+
+    # Create the model Trainer from config.
+    cls = get_trainable_cls(args.model_name)
+
+    # Instantiate agent
+    agent = cls(env=args.env_name, config=config,
+                logger_creator = cameleon_logger_creator(
+                                    args.writer_dir))
+
+    # Restore agent if needed
+    if args.checkpoint_path:
+        agent.restore(args.checkpoint_path)
+
+    # Do the actual rollout.
+    rollout(agent,env, args.env_name,
+                args.num_timesteps, args.num_episodes,
+                args.no_render, args.video_dir,
+            args = args)
+
+    # Stop the agent
+    agent.stop()
+
+    # Get the gross files out of there
+    cleanup(config['monitor'],
+            args.writer_dir,
+            args.ext)
 
 def run(args, parser):
     """
@@ -635,78 +838,40 @@ def run(args, parser):
 
     # Load config from saved dictionary
     config = load_config(args)
+    args.framework = config['framework']
 
-    # Make sure configuration has the correct outpath
-    config['callbacks'] = lambda: RLlibCallbacks(outdir = args.writer_dir,
-                                                    model = args.run,
-                                                    framework = config['framework'],
-                                                    no_frame = args.no_frame,
-                                                    use_hickle = args.use_hickle)
-    # import ray.rllib.models.modelv2
-    #Spin up Ray
-    ray.init(local_mode=args.local_mode)
+    # Check to make sure bundling only option is correctly formed
+    assert ((args.bundle_only and args.bundle_only_dir) or
+            (not args.bundle_only)),\
+        "ERROR: bundle only set without accompanying filepath"
 
-    # Set up environment
-    env = gym.make(args.env)
+    # If not bundle only, run the rollouts
+    if not args.bundle_only:
+        run_rollouts(args,config)
+    else:
+        _update_bundle_configuration(args)
 
-    # Wrap environment
-    env = wrap_env(env, args.wrappers)
+    # If we are saving for imago, do it now (when memory clear)
+    if args.store_imago:
+        collect_imago_dataset(args)
 
-    # Register environment with Ray
-    register_env(args.env, lambda config: env)
-
-    # Create the model Trainer from config.
-    cls = get_trainable_cls(args.run)
-
-    # # Instantiate agent with update
-    # config.update({
-    # "num_cpus_for_driver": 1,
-    # "num_workers": 2,
-    # "num_gpus": 0,
-    # "num_cpus_per_worker": 1,
-    # "num_gpus_per_worker": 1,
-    # "num_envs_per_worker": 1,
-    # })
-
-    agent = cls(env=args.env, config=config,
-                logger_creator = cameleon_logger_creator(
-                                    args.writer_dir))
-
-    # Restore agent if needed
-    if args.checkpoint:
-        agent.restore(args.checkpoint)
-
-    # Do the actual rollout.
-    rollout(agent,env, args.env,
-                args.steps, args.episodes,
-                args.no_render, args.video_dir)
-
-    # Stop the agent
-    agent.stop()
-
-    # Get the gross files out of there
-    cleanup(config['monitor'],
-            args.writer_dir,
-            "hkl" if args.use_hickle else "pkl")
 
 
 #######################################################################
 # Main - Run rollout parsing engine
 #######################################################################
 
-
-
 if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
 
     # --use_shelve w/o --out option.
-    if args.use_shelve and not args.out:
+    if args.use_shelve and not args.outdir:
         raise ValueError(
             "If you set --use-shelve, you must provide an output file via "
             "--out as well!")
     # --track-progress w/o --out option.
-    if args.track_progress and not args.out:
+    if args.track_progress and not args.outdir:
         raise ValueError(
             "If you set --track-progress, you must provide an output file via "
             "--out as well!")

@@ -15,6 +15,7 @@
 import sys
 import os
 import glob
+from collections import OrderedDict
 import re
 from tqdm import tqdm
 
@@ -39,7 +40,8 @@ class CameleonInterestingnessAgent(Agent):
                  framework,
                  outdir = "data/interestingness/",
                  action_factors = ['left','right','up','down'],
-                 rollout_regex =r'(\d+)_ep(\d+)_s(\d+)_r*(.+).[ph]kl',
+                 # FIX THIS
+                 rollout_regex =r'[a-z\d]*_ep(\d+)_s(\d+)_r*(.+).[ph]kl',
                  use_hickle = False,
                  seed = None):
         Agent.__init__(self, seed)
@@ -51,6 +53,7 @@ class CameleonInterestingnessAgent(Agent):
             os.makedirs(self.outdir)
 
         self.rollout_dir = rollout_dir
+        self.num_episodes = 0
         self.use_hickle = use_hickle
         self.write_compressed = _write_hkl if use_hickle else _write_pkl
         self.read_compressed = _read_hkl if use_hickle else _read_pkl
@@ -60,7 +63,7 @@ class CameleonInterestingnessAgent(Agent):
         self.agent_name = agent_name
         self.framework = framework
         self.action_factors = action_factors
-        self.episodes = {}
+        self.episodes = OrderedDict()
 
 
     def _init_episode(self,
@@ -68,12 +71,16 @@ class CameleonInterestingnessAgent(Agent):
                       episode_filepath,
                       steps,
                       reward,
-                      pid):
+                      epochs):
         """TODO: Docstring for _init_episode.
 
-        :episode_id: TODO
-        :episode_filepath: TODO
-        :returns: TODO
+        :episode_id: Int:       ID of episode
+        :episode_filepath: Str: Episode path
+        :steps: int:            Number of timesteps in episode
+        :reward: float:         Total reward for episode
+        :epochs: int:           Number of epochs model trained for before rollout
+
+        :returns: Dict:         Subdictionary for specific episode
 
         """
         assert episode_id not in self.episodes,\
@@ -82,7 +89,7 @@ class CameleonInterestingnessAgent(Agent):
 
         self.episodes[episode_id] = {"data":{},
                                      "steps":steps,
-                                     "pid":pid,
+                                     "train_epochs":epochs,
                                      "total_reward":reward,
                                      "filepath":episode_filepath}
 
@@ -93,25 +100,33 @@ class CameleonInterestingnessAgent(Agent):
         """Add timestep to episode
         artifact
 
-        :timestep: Int: Timestep
-        :timestep_data: Dict: timestep information
-        :episode: Dict: subsection of self.episodes
+        :timestep: Int:       Timestep
+        :timestep_data: Dict: Timestep-specific data
+        :episode: Dict:       subdictionary of self.episodes
 
         """
-        t = timestep_data
-        episode[timestep] = InteractionDataPoint(
-                                obs = t['observation'],
-                                action = t["action"],
-                                reward = t["reward"],
-                                action_probs = t["action_dist"],
-                                new_episode = (timestep == 0),
-                                action_factors= self.action_factors,
 
-                                # Not everyone has
-                                value = t.get("value_function",None),
-                                action_values = t.get("action_values",None),
-                                next_obs = t.get("next_observation",None),
-                                next_rwds = t.get("next_reward",None))
+        t = timestep_data
+
+        assert t.get('action_dist',None),\
+            "ERROR: Rollouts do not have information necessary to"\
+            " conduct interestingness. This may be due to running "\
+            "rollouts from a non-checkpointed model."
+
+        episode[timestep] = InteractionDataPoint(
+                                obs            = t['observation'],
+                                action         = t["action"],
+                                reward         = t["reward"],
+                                action_probs   = t["action_dist"],
+                                new_episode    = (timestep == 0),
+                                action_factors = self.action_factors,
+
+                                # Not everyone has these, so default is None
+                                value          = t.get("value_function",None),
+                                action_values  = t.get("action_values",None),
+                                next_obs       = t.get("next_observation",None),
+                                next_rwds      = t.get("next_reward",None)
+                                                )
 
         # Things we should probably add to the data point
         episode[timestep].encoded_env = t["info"]["env"]
@@ -125,33 +140,58 @@ class CameleonInterestingnessAgent(Agent):
                       episode_filepath,
                       steps,
                       reward,
-                      pid):
-        """Add episode data to agent repo
+                      epochs):
+        """Add episode data to agent store
 
-        :episode: Dict: Episode rollout saved by agent
+        :episode_data:Dict:     Rollout data
+        :episode_id: Int:       ID of episode
+        :episode_filepath: Str: Episode path
+        :steps: int:            Number of timesteps in episode
+        :reward: float:         Total reward for episode
+        :epochs: int:           Number of epochs model trained for before rollout
 
         """
-        episode_store = self._init_episode(episode_id,
+        episode = self._init_episode(episode_id,
                                            episode_filepath,
                                            steps,
                                            reward,
-                                           pid)
+                                           epochs)
 
-        assert len(episode_data) == episode_store["steps"],\
+        assert len(episode_data) == episode["steps"],\
             """ERROR: Episode metadata step and length mismatch:
-            Step: {} - Length: {}""".format(episode_store["step"],
+            Step: {} - Length: {}""".format(episode["steps"],
                                             len(episode_data))
 
+        episode_store = episode['data']
+        self.num_episodes += 1
         for i in range(len(episode_data)):
             self._add_timestep(i,
                                episode_data[i],
                                episode_store)
 
 
+    def flatten_for_interestingness_v1(self):
+        """Flatten data dictionary to maintain
+        same data format as previously specified
+        by original interestingness module
+
+        :returns: list[InteractionDataPoint]: Interaction Data
+
+        """
+        interaction_data = []
+
+        for e,v in self.episodes.items():
+            for i in range(len(v['data'])):
+                data = v['data'][i]
+                interaction_data.append(data)
+
+        return interaction_data
+
     def _get_rollout_paths(self):
         """Get path to all rollout pickle
         files in directory
-        :returns: TODO
+
+        :returns: List[str]: Rollout path list
 
         """
         self.rollout_paths = glob.glob(self.rollout_dir + "**/*.{}"\
@@ -161,8 +201,9 @@ class CameleonInterestingnessAgent(Agent):
         return self.rollout_paths
 
     def get_interaction_datapoints(self):
-        """Load rollouts
-        :returns: TODO
+        """Load rollouts for interestingness
+
+        :returns: list[InteractionDataPoint]: Interaction Data
 
         """
         paths = self._get_rollout_paths()
@@ -173,15 +214,10 @@ class CameleonInterestingnessAgent(Agent):
             matches = re.match(self.rollout_path_regex,episode_id)
             if matches:
                 components = matches.groups()
-                pid = int(components[0])
-                # episode_pid_num = int(components[1])
-                steps = int(components[2])
-                total_reward = int(components[3].replace("n",'-'))
+                epochs = int(components[0])
+                steps = int(components[1])
+                total_reward = int(components[2].replace("n",'-'))
 
-                # print(paths)
-                # print(rollout)
-                # a = _read_hkl(rollout)
-                # sys.exit(1)
                 episode_data = self.read_compressed(rollout)
 
                 self.add_episode(episode_data,
@@ -189,8 +225,7 @@ class CameleonInterestingnessAgent(Agent):
                                              rollout,
                                              steps,
                                              total_reward,
-                                             pid)
-
+                                             epochs)
 
         self.out_root = '{}{}_{}_{}'.format(
                                 self.outdir,
@@ -198,8 +233,13 @@ class CameleonInterestingnessAgent(Agent):
                                 self.framework,
                                 self.env_name)
 
+        return self.flatten_for_interestingness_v1()
+
+
+
     def get_counterfactuals(self):
         """Get counterfactuals
+
         :returns: TODO
 
         """
@@ -207,6 +247,10 @@ class CameleonInterestingnessAgent(Agent):
 
     def save(self):
         """Save self as a pickle file
+
+        NOTE: This is not currently used since
+        interestingness is run while this object
+        is still in memory
 
         """
 

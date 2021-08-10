@@ -32,14 +32,16 @@ class PPOExtractor(BaseRLlibPolicyExtractor):
                  episode,
                  worker,
                  framework,
-                 env):
+                 env,
+                 episode_start):
 
         BaseRLlibPolicyExtractor.__init__(self,
                                           model,
                                           episode,
                                           worker,
                                           framework,
-                                          env)
+                                          env,
+                                          episode_start)
 
     def get_action_logits(self):
         """Get logits from base policy prediction
@@ -61,7 +63,7 @@ class PPOExtractor(BaseRLlibPolicyExtractor):
             logits = torch.flatten(self.model_out).detach().cpu().numpy()
 
         self.logits = logits
-        return logits
+        return [logits]
 
 
     def get_action_dist(self):
@@ -80,7 +82,6 @@ class PPOExtractor(BaseRLlibPolicyExtractor):
         assert (self.model_out.shape[1] == self.env.action_space.n),\
             "ERROR: Action distribution output does not match action space"
 
-
         if (self.framework == "tf"):
             with self.policy._sess.as_default():
                 logits = tf.reshape(self.model_out,[-1])
@@ -94,11 +95,11 @@ class PPOExtractor(BaseRLlibPolicyExtractor):
 
         elif (self.framework == "torch"):
             logits = torch.flatten(self.model_out)
-            action_dist = torch.nn.Softmax(logits).detach().cpu().numpy()
-            logits = logits.numpy()
+            action_dist = torch.nn.functional.softmax(logits, dim = 0).detach().cpu().numpy()
+            logits = logits.detach().cpu().numpy()
 
         self.logits = logits
-        return action_dist
+        return [action_dist]
 
     def get_value_function_estimate(self):
         """Get value function estimate for
