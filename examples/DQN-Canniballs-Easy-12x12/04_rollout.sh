@@ -13,7 +13,6 @@
 
 # Environment, wrappers and model
 ENV_NAME="Cameleon-Canniballs-Easy-12x12-v0"
-MODEL_NAME="DQN"
 WRAPPERS="canniballs_one_hot,encoding_only"
 
 # Number of episodes and steps to roll out for

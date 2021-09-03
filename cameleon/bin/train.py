@@ -13,11 +13,13 @@
 
 # Logistical Packages
 import os
+import json
 import sys
 import logging
 from tqdm import tqdm, trange
 import argparse
 import importlib
+import time
 import datetime as dt
 
 # DL and distributed libs
@@ -34,40 +36,78 @@ from gym import envs
 from ray.tune.registry import register_env
 from ray import tune
 from cameleon.callbacks.rllib.tune_progress import CameleonRLlibTuneReporter
-from cameleon.utils.env import str2bool, str2dict, dict2str, str2wrapper,str2model, wrap_env,load_env, update_config, cameleon_logger_creator, str2framework
-from cameleon.utils.general import _write_pkl
+from cameleon.utils.env import str2bool, str2dict, dict2str, str2wrapper,str2model, wrap_env,\
+    load_env, update_config, cameleon_logger_creator, str2framework, str2int, str2str
+from cameleon.utils.messages import CameleonEmailBot
+from cameleon.utils.general import _write_pkl, _save_metadata
+
+# Set logging level
+logging.basicConfig(level=logging.INFO,
+                    format='%(message)s')
 
 #####################################################################################
 # Argparse formation
 #####################################################################################
-parser = argparse.ArgumentParser(description='Cameleon Training API with RLlib')
 
-# Required
-parser.add_argument('--env-name', default = None, required = True, help = "Any argument registered with gym, including Gym Minigrid and Cameleon Environments")
-parser.add_argument('--model-name', default=None,required = True, type = str, help='SAC, PPO, PG, A2C, A3C, IMPALA, ES, DDPG, DQN, MARWIL, APEX, or APEX_DDPG')
+def create_parser(parser_creator = None):
+    """Create training argument parser
 
-# Optional
-parser.add_argument('--outdir', default='../models/', help='Directory to output results')
-parser.add_argument('--num-epochs', default = 100,type =int, help="Number of training iterations for algorithm")
-parser.add_argument('--num-episodes', default = 0,type =int, help="Number of episodes to train for.")
-parser.add_argument('--num-timesteps', default = 0,type =int, help="Number of timesteps to train for")
-parser.add_argument('--num-workers', default = 4, type = int,help="Number of rollout workers to utilize during training")
-parser.add_argument('--num-gpus', default = 1,type = int, help="Number of GPUs to utilize during training. Generally this is not bottleneck, so 1 is often sufficient")
-parser.add_argument('--checkpoint-epochs', default = 5, type = int, help="Number of epochs before a checkpoints is saved")
-parser.add_argument('--config',default = None,type = str2dict,help = 'JSON string configuration for RLlib training')
-parser.add_argument('--checkpoint-path', default = None, help = "Model directory, if a pretrained system exists already")
-parser.add_argument('--framework', default = "tf2",type=str2framework, help = "Deep learning framework to use on backend. Important that this is one of ['tf2','torch']")
-parser.add_argument('--verbose', default = True, type=str2bool, help = "Determine if output should be verbose")
-parser.add_argument('--tune', default = False, type=str2bool, help = "Determine if the tune wrapper from Ray should be used for training")
-parser.add_argument('--ray-obj-store-mem', default = 3.5e9, type=int, help = "Maximum object store memory for Ray")
-parser.add_argument('--wrappers', default="", type = str2wrapper,  help=
-                  """
-                    Wrappers to encode the environment observation in different ways. Wrappers will be executed left to right, and the options are as follows (example: 'encoding_only,canniballs_one_hot'):
-                  - partial_obs.{obs_size}:         Partial observability - must include size (odd int)
-                  - encoding_only:                  Provides only the encoded representation of the environment
-                  - rgb_only:                       Provides only the RGB screen of environment
-                  - canniballs_one_hot              Canniballs specific one-hot
-                  """)
+    :parser_creator: Creator for argument parser
+    :returns: parser
+
+    """
+    parser = argparse.ArgumentParser(description='Cameleon Training API with RLlib')
+
+    # Required
+    parser.add_argument('--env-name', default = None, required = True, help = "Any argument registered with gym, including Gym Minigrid and Cameleon Environments")
+    parser.add_argument('--model-name', default=None,required = True, type = str, help='SAC, PPO, PG, A2C, A3C, IMPALA, ES, DDPG, DQN, MARWIL, APEX, or APEX_DDPG')
+
+    # Add optiona arguments
+    parser = create_optional_args(parser)
+
+    return parser
+
+
+def create_optional_args(parser):
+    """Add optional arguments to parser
+
+    :parser: Argparse.parser: Argument parser
+    :returns: parser
+
+    """
+    # Optional
+    parser.add_argument('--outdir', default='../models/', help='Directory to output results')
+    parser.add_argument('--num-epochs', default = 100,type =int, help="Number of training iterations for algorithm")
+    parser.add_argument('--num-episodes', default = 0,type =int, help="Number of episodes to train for.")
+    parser.add_argument('--num-timesteps', default = 0,type =int, help="Number of timesteps to train for")
+    parser.add_argument('--num-workers', default = 4, type = int,help="Number of rollout workers to utilize during training")
+    parser.add_argument('--num-gpus', default = 1,type = int, help="Number of GPUs to utilize during training. Generally this is not bottleneck, so 1 is often sufficient")
+    parser.add_argument('--checkpoint-epochs', default = 5, type = int, help="Number of epochs before a checkpoints is saved")
+    parser.add_argument('--config',default = None,type = str2dict,help = 'JSON string configuration for RLlib training')
+    parser.add_argument('--checkpoint-path', default = None, help = "Model directory, if a pretrained system exists already")
+    parser.add_argument('--framework', default = "tf2",type=str2framework, help = "Deep learning framework to use on backend. Important that this is one of ['tf2','torch']")
+    parser.add_argument('--verbose', default = True, type=str2bool, help = "Determine if output should be verbose")
+    parser.add_argument('--email-updates', default = True, type=str2bool, help = "Determine if email updates should be sent")
+    parser.add_argument('--email-server', default = 'smtp.mail.yahoo.com', help = "Email server to utilize")
+    parser.add_argument('--email-sender', default = None,type=str2str, help = "Sender email to utilize (type should match email-server)")
+    parser.add_argument('--email-receiver', default = None,type=str2str, help = "Receiver email address (does not need to be of the same type as email-server)")
+    parser.add_argument('--tune', default = False, type=str2bool, help = "Determine if the tune wrapper from Ray should be used for training")
+    parser.add_argument('--ray-obj-store-mem', default = 3.5e9, type=int, help = "Maximum object store memory for Ray")
+    parser.add_argument("--init-ray", default=True,type=str2bool,help="Whether or not to init Ray (may already be running)")
+    parser.add_argument("--seed",default=42,type = str2int,
+                            help="Random seed for training execution. If not provided, training"
+                            "is not seeded and cannot be reproduced.")
+    parser.add_argument('--wrappers', default="", type = str2wrapper,  help=
+                    """
+                    Wrappers to encode the environment observation in different ways.
+                    Wrappers will be executed left to right, and the options are as follows:
+                           + (example: 'encoding_only,canniballs_one_hot'):
+                    - partial_obs.{obs_size}:         Partial observability - must include size (odd int)
+                    - encoding_only:                  Provides only the encoded representation of the environment
+                    - rgb_only:                       Provides only the RGB screen of environment
+                    - canniballs_one_hot              Canniballs specific one-hot
+                    """)
+    return parser
 
 #######################################################################
 # Helper arguments for argparse execution
@@ -132,6 +172,11 @@ def train_agent_tune(agent,
                       "Timesteps":['timesteps_total',args.num_timesteps]}
     sc = stop_crit_dict[args.stopping_crit]
 
+    # Initial save if training fails
+    args.config = config
+    metadata = {"train":vars(args)}
+    _save_metadata(metadata, args.outdir)
+
     # Run experiment
     tune.run(
         agent,
@@ -164,6 +209,11 @@ def train_agent_tune(agent,
         checkpoint_at_end=True,
     )
 
+    # Final save after training
+    args.config = config
+    metadata = {"train":vars(args)}
+    _save_metadata(metadata, args.outdir)
+
 def train_agent_standalone(agent,
                            args,
                            config):
@@ -185,6 +235,7 @@ def train_agent_standalone(agent,
     started = False
 
     # Iterate through training loop with update messages
+    result = None
     while _keep_going(args.epochs_total, args.episodes_total, args.timesteps_total,
                       args.num_epochs, args.num_episodes, args.num_timesteps):
 
@@ -199,6 +250,7 @@ def train_agent_standalone(agent,
         args.epochs_total = result['training_iteration']
         args.episodes_total = result['episodes_total']
         args.timesteps_total = result['timesteps_total']
+        args.time_total_s = result['time_total_s']
 
         # Save checkpoint if required
         if ((args.epochs_total % args.checkpoint_epochs) == 0):
@@ -211,6 +263,13 @@ def train_agent_standalone(agent,
                                  result)
             sys.stdout.flush()
 
+    # Make final checkpoint
+    chkpt_file = agent.save(args.outdir)
+    result['checkpoint_file'] = chkpt_file
+    make_progress_update(args,
+                            result)
+    sys.stdout.flush()
+
 def train_agent(agent,
                 args,
                 config,
@@ -219,6 +278,12 @@ def train_agent(agent,
     :returns: TODO
 
     """
+
+    # Initial save if training fails
+    args.config = config
+    metadata = {"train":vars(args)}
+    _save_metadata(metadata, args.outdir)
+
     if tune:
         train_agent_tune(agent,
                          args,
@@ -230,6 +295,11 @@ def train_agent(agent,
         train_agent_standalone(agent,
                                args,
                                config)
+
+    # Save metadata after training
+    args.config = config
+    metadata = {"train":vars(args)}
+    _save_metadata(metadata, args.outdir)
 
 def make_progress_update(
                          args,
@@ -257,8 +327,10 @@ def make_progress_update(
     time_left_s = (sc[0] - sc[1])*avg_per_iteration
     percent_complete = round(sc[1]*100 / sc[0],2)
 
-
-    time_status = "Epoch {:2d} | ETA {} | {:6.2f}% complete | Avg. Epoch {:6.2f} sec.\n".format( current_iter,
+    time_status = "Model: {}\nEnv: {}\n\nEpoch {:2d} | ETA {} | {:6.2f}% complete | Avg. Epoch {:6.2f} sec.\n".format(
+                    args.model_name,
+                    args.env_name,
+                    current_iter,
                     dt.timedelta(seconds = round(time_left_s)),
                     percent_complete,
                     avg_per_training_iteration)
@@ -271,42 +343,52 @@ def make_progress_update(
                 result["episode_len_mean"]
                     )
 
-
+    curr_timestamp = dt.datetime.now()
     current_time = " - {} remaining: {}\n\n"\
                     " - Epochs total: {}\n"\
                     " - Episodes total: {}\n"\
                     " - Timesteps total: {}\n\n"\
                     " - Current time: {}\n"\
+                    " - Est. datetime at finish: {}\n"\
                     " - Total elapsed {}"\
         .format(args.stopping_crit,
                 sc[0] - sc[1],
                 result['training_iteration'],
                 result['episodes_total'],
                 result['timesteps_total'],
-                dt.datetime.now().strftime("%y-%m-%d %H:%M:%S"),
+                curr_timestamp.strftime("%y-%m-%d %H:%M:%S"),
+                (curr_timestamp + dt.timedelta(seconds = round(time_left_s))).strftime("%y-%m-%d %H:%M:%S"),
                 dt.timedelta(seconds = round(result['time_total_s'])))
 
-    print(time_status)
-    print(current_time)
-    print(reward_status)
-    print("====="*10)
+
+    logging.info(time_status)
+    logging.info(current_time)
+    logging.info(reward_status)
+    logging.info("====="*15)
     sys.stdout.flush()
 
 
 #######################################################################
-# Main method for argparse
+# Training orchestration function
 #######################################################################
 
-def main():
-    """Main method for argparse and rllib training
+def train(args,parser = None):
+    """Train agent
+
+    :args: Argparse.args: User-defined arguments
 
     """
-
-    #Parse all arguments
-    args = parser.parse_args()
+    pass
+    # Initialize mail bot
+    if args.email_updates:
+        mail_bot = CameleonEmailBot(email_sender = args.email_sender,
+                                    email_receiver = args.email_receiver,
+                                    email_server = args.email_server)
 
     # Initialize Ray - and try to prevent OOM
-    ray.init(object_store_memory = args.ray_obj_store_mem)
+    #Spin up Ray only if it is not already running
+    if args.init_ray:
+        ray.init(object_store_memory = args.ray_obj_store_mem)
 
     # Set up environment
     env = gym.make(args.env_name)
@@ -324,6 +406,7 @@ def main():
     config['num_workers'] = args.num_workers
     config['num_gpus'] = args.num_gpus
     config['framework'] = args.framework
+    config['seed'] = args.seed
     _determine_stopping_criteria(args)
 
     #Update config if one was passed
@@ -333,15 +416,19 @@ def main():
 
     # Update outdir
     args.outdir_root = args.outdir
-    args.outdir = "{}{}_{}_{}_{}".format(args.outdir,
+    args.outdir = "{}{}_{}_{}_rs{}_w{}_{}".format(args.outdir,
                                     args.model_name,
                                     args.framework,
                                     args.env_name,
+                                    args.seed,
+                                    args.num_workers,
                                     dt.datetime.now().strftime("%Y.%m.%d"))
 
-    args.tune_dirname = "{}_{}_{}".format(
+    args.tune_dirname = "{}_{}_rs{}_w{}_{}".format(
                                     args.model_name,
                                     args.framework,
+                                    args.seed,
+                                    args.num_workers,
                                     dt.datetime.now().strftime("%Y.%m.%d"))
 
 
@@ -364,6 +451,34 @@ def main():
                 args,
                 config,
                 tune = args.tune)
+
+    # Shutdown Ray (ensures fresh start for random seeds)
+    ray.shutdown()
+
+    # Send email update, if necessary
+    if args.email_updates:
+        mail_bot.send_email("train_finished",
+                            args)
+
+#######################################################################
+# Main method
+#######################################################################
+
+def main():
+    """Main method for argparse and rllib training
+
+    """
+
+    # REMOVE THIS LATER
+    # time.sleep(3600*11)
+
+    #Parse all arguments
+    parser = create_parser()
+    args = parser.parse_args()
+
+    # Train agent
+    train(args)
+
 
 #######################################################################
 # Main method

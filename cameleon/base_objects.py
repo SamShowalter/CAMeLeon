@@ -189,6 +189,30 @@ class WorldObj:
         raise NotImplementedError
 
 #######################################################################
+#    Food
+#######################################################################
+
+
+class Food(WorldObj):
+    def __init__(self, color = 'purple'):
+        super().__init__('food', color)
+
+    def can_overlap(self):
+        return True
+
+    def render(self,img):
+        """how to render object
+
+        :img: location of item
+
+        """
+        color = COLORS[self.color]
+        tri = point_in_triangle((0.19, 0.19),
+                                (0.50, 0.81),
+                                (0.81, 0.19))
+        fill_coords(img,tri,color)
+
+#######################################################################
 # Goal
 #######################################################################
 
@@ -272,7 +296,7 @@ class Wall(WorldObj):
 
 
 class Door(WorldObj):
-    def __init__(self, color, is_open=False, is_locked=False):
+    def __init__(self, color='green', is_open=False, is_locked=False):
         super().__init__('door', color)
         self.is_open = is_open
         self.is_locked = is_locked
@@ -380,7 +404,7 @@ class Ball(WorldObj):
 
 
 class Box(WorldObj):
-    def __init__(self, color, contains=None):
+    def __init__(self, color = 'yellow', contains=None):
         super(Box, self).__init__('box', color)
         self.contains = contains
 
@@ -403,6 +427,25 @@ class Box(WorldObj):
         return True
 
 #######################################################################
-# Main
+# Registry for later rendering
 #######################################################################
+
+
+#Reverse dict for idx to object
+IDX_TO_INIT_OBJECT = {
+    # Originally 'empty'
+    0:  None,
+    1:  None,
+    2:  Wall(),
+    3:  Floor(),
+    4:  Door(),
+    5:  Key(),
+    6:  Ball(),
+    7:  Food(),
+    8:  Box(),
+    9:  Goal(),
+    10: Lava(),
+    11: Ball(),
+}
+
 

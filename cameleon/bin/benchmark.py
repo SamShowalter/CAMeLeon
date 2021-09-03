@@ -1,4 +1,4 @@
-#################################################################################
+################################################################################
 #
 #             Project Title:  Speed benchmarking for Cameleon Games
 #             Author:         Sam Showalter
@@ -12,6 +12,7 @@
 #################################################################################
 
 from tqdm import tqdm
+import logging
 import time
 import argparse
 
@@ -23,6 +24,10 @@ from gym_minigrid.wrappers import *
 import cameleon.envs
 from cameleon.wrappers import *
 from cameleon.utils.env import str2wrapper, str2bool, wrap_env
+
+# Set logging level
+logging.basicConfig(level=logging.INFO,
+                    format='%(message)s')
 
 #################################################################################
 # Define argument parser arguments
@@ -58,7 +63,7 @@ def reset_rendering_test(args):
 
     """
     t0 = time.time()
-    print("Reset rendering speed test")
+    logging.info("Reset rendering speed test")
     for i in tqdm(range(int(args.num_resets))):
         args.env.reset()
     t1 = time.time()
@@ -75,7 +80,7 @@ def visual_rendering_test(args):
 
     """
     # Benchmark rendering
-    print("Visual Rendering")
+    logging.info("Visual Rendering")
     t0 = time.time()
     for i in tqdm(range(args.num_viz_frames)):
         args.env.render('rgb_array')
@@ -95,7 +100,7 @@ def encoded_rendering_test(args):
     t0 = time.time()
 
     #Benchmark agent view
-    print("Encoded Rendering Test")
+    logging.info("Encoded Rendering Test")
 
     args.env.reset()
     for i in tqdm(range(args.num_enc_frames)):
@@ -138,11 +143,11 @@ def main():
         viz_fps = visual_rendering_test(args)
 
 
-    # Print a summary
-    print('\nEnv reset time: {:.1f} ms'.format(reset_time))
-    print('Encoded Env FPS: {:.0f}'.format(enc_fps))
+    # print a summary
+    logging.info('\nEnv reset time: {:.1f} ms'.format(reset_time))
+    logging.info('Encoded Env FPS: {:.0f}'.format(enc_fps))
     if args.visual:
-        print('Visual rendering FPS : {:.0f}'.format(viz_fps))
+        logging.info('Visual rendering FPS : {:.0f}'.format(viz_fps))
 
 #######################################################################
 # Main

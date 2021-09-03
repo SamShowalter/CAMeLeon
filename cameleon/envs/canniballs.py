@@ -15,6 +15,7 @@
 import os
 import sys
 import numpy as np
+from functools import partial
 import logging
 from operator import add
 
@@ -42,7 +43,7 @@ class BaseCanniball(Ball):
         self.score = 0
 
         #Make sure all objects governed by same seed
-        self.np_random = game.np_random
+        self.np_random = game.np_random if self.game else np.random
         self.new_pos = None
         self.prev_pos = None
 
@@ -61,7 +62,8 @@ class BaseCanniball(Ball):
         return (OBJECT_TO_IDX[self.type], COLOR_TO_IDX[self.color], self.score)
 
     def is_valid(self,pos,
-                  reject_fn = None):
+                 is_disruption = False,
+                 reject_fn = None):
         """Determine if placement is valid
 
         :pos: tuple:          Position to check
@@ -71,7 +73,9 @@ class BaseCanniball(Ball):
         # Don't place the object on top of another object
         # Don't place the object where the agent is
         # Check if there is a filtering criterion
-        if ((self.game.grid.get(*pos) != None) or
+        if is_disruption:
+            return True
+        elif ((self.game.grid.get(*pos) != None) or
             _tup_equal(pos, self.game.agent_pos) or
             (reject_fn and reject_fn(self,pos))):
             return False
@@ -93,28 +97,23 @@ class BaseCanniball(Ball):
         self.init_pos = None
         self.priorities = []
 
-    def not_close_to_agent(self,pos,agent_loc):
+    def close_to_agent(self,pos,agent_loc,
+                       close = None):
         """
         :returns: If object not too close to agent
 
         """
-        close = self.game.not_close_to_agent
+        if not close:
+            close = self.game.not_close_to_agent
+
         agent_pos  =self.game.agent.cur_pos
 
-        x_too_close = (agent_pos[0] - close,
-                        agent_pos[0] + close)
+        pos_dif = (abs(agent_pos[0] - pos[0]),
+                   abs(agent_pos[1] - pos[1]))
 
+        close = (pos_dif[0] <= close) and (pos_dif[1] <= close)
 
-        y_too_close = (agent_pos[1] - close,
-                        agent_pos[1] + close)
-
-        not_close =  (((pos[0] < x_too_close[0]) or
-                      (pos[0] > x_too_close[1]))
-                      and
-                      ((pos[1] < y_too_close[0]) or
-                      (pos[1] > y_too_close[1])))
-
-        return not_close
+        return close
 
 
 
@@ -123,6 +122,8 @@ class BaseCanniball(Ball):
                  size = (3,3),
                  reject_fn  = None,
                  agent_loc = None,
+                 is_disruption = False,
+                 close = None,
                  max_tries = 100):
         """Core functionality for determining a position for an object.
         Used by all non-agent objects
@@ -137,11 +138,17 @@ class BaseCanniball(Ball):
 
         # Check priorities first
         for p in priorities:
-            if (self.is_valid(p)
+            # print(agent_loc)
+            # print(p)
+            # print(self.is_valid(p,is_disruption = is_disruption))
+            # print(not self.close_to_agent(p,agent_loc))
+            if (self.is_valid(p, is_disruption = is_disruption)
                 and (not agent_loc
-                or (agent_loc and self.not_close_to_agent(p, agent_loc))
-                     )):
+                or (agent_loc and not
+                    self.close_to_agent(p, agent_loc, close = close)))):
                 self.new_pos = p
+                # print("Valid")
+                # print("----------")
                 return
 
         tries = 0
@@ -172,7 +179,7 @@ class BaseCanniball(Ball):
             #Make sure it is not no the agent at init (only time last bit is called)
             if (self.is_valid(pos,reject_fn)
                 and (not agent_loc
-                or (agent_loc and self.not_close_to_agent(pos, agent_loc)))):
+                or (agent_loc and not self.close_to_agent(pos, agent_loc)))):
                 self.new_pos = pos
                 return
 
@@ -445,7 +452,8 @@ class CanniballFood(BaseCanniball):
         self.game = game
         self.new_pos = None
         self.cur_pos = None
-        self.np_random = self.game.np_random
+        # In the case this is a dummy entity, remove random seed
+        self.np_random = self.game.np_random if self.game else np.random
 
     def can_overlap(self):
         """Agent can overlap with food
@@ -474,7 +482,7 @@ class CanniballFood(BaseCanniball):
             self.find_pos()
 
     def render(self,img):
-        """How to render object
+        """how to render object
 
         :img: location of item
 
@@ -585,6 +593,91 @@ class CanniballAgent():
         """ How to render the CanniballAgent """
         fill_coords(img, point_in_circle(0.5, 0.5, 0.31), COLORS[self.color])
 
+
+#######################################################################
+# Disruption Events
+#######################################################################
+
+class CanniballsCornersDisruption(object):
+
+    """Adds a disruption to the game that is built
+    to elicit a specific reponse in the agent"""
+
+    def __init__(self,
+                 start_fn = lambda game: game.step_count >= 10,
+                 end_fn = lambda self: self.active_timesteps >= 8,
+                 grid = Grid,
+                 squeeze = 0,
+                 obj_type = "food"):
+
+        self.start_fn = start_fn
+        self.end_fn = end_fn
+        self.squeeze = squeeze
+        self.obj_type = obj_type
+        self.active = False
+        self.active_timesteps = 0
+        self.grid = grid
+        self.canniballs = []
+
+    def add_game(self, game):
+        """Add game to disruption
+
+        :game: Game for disruption
+
+        """
+        self.game = game
+        self._init_disruption(game.width, game.height)
+
+    def place_objs(self):
+        """
+
+        """
+        obj_dict = {"food": CanniballFood,
+                    "chaser":Chaser,
+                    "bouncer": Bouncer,
+                    "random_walker":RandomWalker}
+
+        assert self.obj_type in obj_dict,\
+            "ERROR: Object type {} not found in registry: {}"\
+            .format(self.obj_type,
+                    list(obj_dict.keys()))
+
+        obj = obj_dict[self.obj_type]
+
+        for corner in self.corners:
+            active_obj = obj(game=self.game)
+
+            active_obj.find_pos(priorities = [corner],
+                    agent_loc = self.game.agent.cur_pos,
+                    is_disruption=True)
+            active_obj.init_pos = active_obj.new_pos
+            active_obj.cur_pos = active_obj.init_pos
+            self.canniballs.append(active_obj)
+
+            # Set the objects
+            self.grid.set(*active_obj.cur_pos,
+                        active_obj)
+
+
+    def _init_disruption(self,width,height):
+        """TODO: Docstring for init_disruption.
+
+        :arg1: TODO
+        :returns: TODO
+
+        """
+        # Generate the surrounding walls
+        self.canniballs = []
+        self.grid = self.grid(width,height)
+        self.grid.wall_rect(0, 0, width, height)
+        self.grid.agent = self.game.agent
+        s = self.squeeze
+        self.corners = [(1+s,1+s),
+                        (1+s,width-2-s),
+                        (height -2-s,1+s),
+                        (width-2-s,height-2-s)]
+
+
 #######################################################################
 # Cannibals game
 #######################################################################
@@ -610,6 +703,7 @@ class Canniballs(CameleonEnv):
                  max_steps = 300,
                  agent_init_space = 1,
                  replenish_food = True,
+                 disruptions = [],
                  score_roster = {"agent":1,
                                  "food":0,
                                  "random_walker":1,
@@ -626,7 +720,13 @@ class Canniballs(CameleonEnv):
         self.score_roster = score_roster
         self.replenish_food = replenish_food
 
-        super().__init__(grid_size = size)
+        # Initialize everything
+        super().__init__(grid_size = size,disruptions=disruptions)
+
+        # Standard grid when disruption taking place
+        self.live_disruption = None
+        self.dormant_grid = None
+        self.dormant_canniballs = None
 
         # Action enumeration for this environment
         self.actions = Canniballs.Actions
@@ -652,6 +752,50 @@ class Canniballs(CameleonEnv):
         obj.cur_pos = obj.init_pos
         if not agent:
             self.grid.set(*obj.cur_pos, obj)
+
+    def disruptions_active(self):
+        """Check if there are any active disruptions
+
+        :returns:
+
+        """
+
+        for d in self.disruptions:
+            if d.start_fn(self):
+                return d
+
+        return None
+
+    def check_disruptions(self):
+        """
+        Check to see if a disruption has become active.
+        If it has, then swap grids. If disruption is
+        not inactive, remove it and reset standard
+        grid (return agent to original spot).
+        """
+
+        if self.live_disruption and not self.live_disruption.end_fn(self.live_disruption):
+            self.live_disruption.active_timesteps += 1
+            return
+
+        elif self.live_disruption:
+            self.live_disruption.alive = False
+            self.agent.cur_pos = self.live_disruption.agent_init_pos
+            self.live_disruption = None
+            self.grid = self.dormant_grid
+            self.canniballs = self.dormant_canniballs
+
+        else:
+            disruption = self.disruptions_active()
+            if disruption:
+                disruption.place_objs()
+                self.live_disruption = disruption
+                self.disruptions.remove(disruption)
+                self.live_disruption.agent_init_pos = self.agent.cur_pos
+                self.dormant_grid = self.grid
+                self.dormant_canniballs = self.canniballs
+                self.grid = self.live_disruption.grid
+                self.canniballs = self.live_disruption.canniballs
 
 
     def _place_obj(self, obj,
@@ -684,6 +828,7 @@ class Canniballs(CameleonEnv):
         """
 
         for i in range(num):
+
             #Instantiate object
             active_obj = obj(game = self)
             active_obj.score = score
@@ -720,6 +865,7 @@ class Canniballs(CameleonEnv):
         self.grid.wall_rect(0, 0, width, height)
 
         # Place obstacles
+        self.dormant_canniballs = []
         self.canniballs = []
         canniball_roster =  {CanniballFood: (self.n_food,
                                              self.score_roster['food']),
@@ -935,6 +1081,10 @@ class Canniballs(CameleonEnv):
         if self.step_count >= self.max_steps:
             done = True
 
+        # Check for an updated state on disruptions
+        # This may also revert things back to normal
+        self.check_disruptions()
+
         obs = self.gen_obs()
 
         return obs, reward, done, {}
@@ -975,6 +1125,89 @@ class CanniballsEnvEasy12x12(Canniballs):
                          n_random_walkers=2,
                          n_bouncers=1,
                          n_chasers=1)
+
+class CanniballsEnvEasyCornerDisruption12x12(Canniballs):
+
+    """Medium minigrid environment
+    for canniballs"""
+
+    def __init__(self):
+        super().__init__(size = 12,
+                         n_food = 2,
+                         n_random_walkers=2,
+                         n_bouncers=1,
+                         n_chasers=1,
+                         disruptions=[CanniballsCornersDisruption(
+                             start_fn = lambda game: game.step_count >= 5,
+                             end_fn = lambda self:self.active_timesteps >=20,
+                             obj_type = "food")])
+
+
+class CanniballsEnvEasyFakeCornerDisruption12x12(Canniballs):
+
+    """Medium minigrid environment
+    for canniballs"""
+
+    def __init__(self):
+        super().__init__(size = 12,
+                         n_food = 2,
+                         n_random_walkers=2,
+                         n_bouncers=1,
+                         n_chasers=1,
+                         disruptions=[CanniballsCornersDisruption(
+                             start_fn = lambda game: False,
+                             end_fn = lambda self:self.active_timesteps >=10,
+                             squeeze = 2,
+                             obj_type = "chaser")]
+                         )
+
+
+class CanniballsEnvHardCornerDisruption12x12(Canniballs):
+
+    """Medium minigrid environment
+    for canniballs"""
+
+    def __init__(self):
+        super().__init__(size = 12,
+                         n_food = 2,
+                         n_random_walkers=2,
+                         n_bouncers=1,
+                         n_chasers=1,
+                         replenish_food=False,
+                         score_roster = {"agent":1,
+                                 "food":0,
+                                 "random_walker":2,
+                                 "bouncer":4,
+                                 "chaser":5},
+                         disruptions=[CanniballsCornersDisruption(
+                             start_fn = lambda game: game.step_count >= 5,
+                             end_fn = lambda self:self.active_timesteps >=10,
+                             squeeze = 2,
+                             obj_type = "chaser")])
+
+
+class CanniballsEnvHardFakeCornerDisruption12x12(Canniballs):
+
+    """Medium minigrid environment
+    for canniballs"""
+
+    def __init__(self):
+        super().__init__(size = 12,
+                         n_food = 2,
+                         n_random_walkers=2,
+                         n_bouncers=1,
+                         n_chasers=1,
+                         replenish_food=False,
+                         score_roster = {"agent":1,
+                                 "food":0,
+                                 "random_walker":2,
+                                 "bouncer":4,
+                                 "chaser":5},
+                         disruptions=[CanniballsCornersDisruption(
+                             start_fn = lambda game: False,
+                             end_fn = lambda self:self.active_timesteps >=10,
+                             squeeze = 2,
+                             obj_type = "chaser")])
 
 
 class CanniballsEnvMedium12x12(Canniballs):
@@ -1034,6 +1267,27 @@ register(
 register(
     id='Cameleon-Canniballs-Easy-12x12-v0',
     entry_point='cameleon.envs:CanniballsEnvEasy12x12'
+)
+
+register(
+    id='Cameleon-Canniballs-Easy-Corner-Disruption-12x12-v0',
+    entry_point='cameleon.envs:CanniballsEnvEasyCornerDisruption12x12'
+)
+
+register(
+    id='Cameleon-Canniballs-Easy-Fake-Corner-Disruption-12x12-v0',
+    entry_point='cameleon.envs:CanniballsEnvEasyFakeCornerDisruption12x12'
+)
+
+
+register(
+    id='Cameleon-Canniballs-Hard-Corner-Disruption-12x12-v0',
+    entry_point='cameleon.envs:CanniballsEnvHardCornerDisruption12x12'
+)
+
+register(
+    id='Cameleon-Canniballs-Hard-Fake-Corner-Disruption-12x12-v0',
+    entry_point='cameleon.envs:CanniballsEnvHardFakeCornerDisruption12x12'
 )
 
 register(

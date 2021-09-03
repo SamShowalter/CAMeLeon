@@ -72,7 +72,7 @@ class DQNExtractor(BaseRLlibPolicyExtractor):
 
         """
 
-        vf = self.policy.model.get_state_value(self.model_out)
+        vf = self.policy.model.value_function()
 
         # Make sure it is correct shape
         for s in vf.shape:
@@ -99,12 +99,12 @@ class DQNExtractor(BaseRLlibPolicyExtractor):
         """
 
         if (not self.q_vals):
-            self.get_q_function_dist()
+            self.get_q_values()
 
         return [softmax(self.q_vals.flatten(),
                        axis = 0)]
 
-    def get_q_function_dist(self):
+    def get_q_values(self):
         """Get Q function distribution
 
         :returns: Q(a,s)
@@ -120,7 +120,8 @@ class DQNExtractor(BaseRLlibPolicyExtractor):
         q_vals, _,_ = self.policy.model.get_q_value_distributions(self.model_out)
 
         if (self.framework == "tf"):
-            q_vals = q_vals.eval()
+            with self.policy._sess.as_default():
+                q_vals = q_vals.eval()
 
         if (self.framework == "tf2"):
             q_vals = q_vals.numpy()

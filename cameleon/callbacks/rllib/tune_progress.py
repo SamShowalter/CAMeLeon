@@ -13,9 +13,11 @@
 
 import sys
 from typing import Dict, List, Optional, Union
+import logging
 import datetime as dt
 from ray.tune.progress_reporter import CLIReporter
 from ray.tune.trial import Trial
+
 
 #################################################################################
 #   Function-Class Declaration
@@ -55,7 +57,10 @@ class CameleonRLlibTuneReporter(CLIReporter):
         percent_complete = round(sc[1]*100 / sc[0],2)
 
 
-        time_status = "Epoch {:2d} | ETA {} | {:6.2f}% complete | Avg. Epoch {:6.2f} sec.\n".format( current_iter,
+        time_status = "Model: {}\nEnv: {}\n\nEpoch {:2d} | ETA {} | {:6.2f}% complete | Avg. Epoch {:6.2f} sec.\n".format(
+                        self.args.model_name,
+                        self.args.env_name,
+                        current_iter,
                         dt.timedelta(seconds = round(time_left_s)),
                         percent_complete,
                         avg_per_training_iteration)
@@ -68,24 +73,27 @@ class CameleonRLlibTuneReporter(CLIReporter):
                     result["episode_len_mean"]
                         )
 
+        curr_timestamp = dt.datetime.now()
         current_time = " - {} remaining: {}\n\n"\
                         " - Epochs total: {}\n"\
                         " - Episodes total: {}\n"\
                         " - Timesteps total: {}\n\n"\
                         " - Current time: {}\n"\
+                        " - Est. datetime at finish: {}\n"\
                         " - Total elapsed {}"\
             .format(self.args.stopping_crit,
                     sc[0] - sc[1],
                     result['training_iteration'],
                     result['episodes_total'],
                     result['timesteps_total'],
-                    dt.datetime.now().strftime("%y-%m-%d %H:%M:%S"),
+                    curr_timestamp.strftime("%y-%m-%d %H:%M:%S"),
+                    (curr_timestamp + dt.timedelta(seconds = round(time_left_s))).strftime("%y-%m-%d %H:%M:%S"),
                     dt.timedelta(seconds = round(result['time_total_s'])))
 
-        print(time_status)
-        print(current_time)
-        print(reward_status)
-        print("====="*10)
+        logging.info(time_status)
+        logging.info(current_time)
+        logging.info(reward_status)
+        logging.info("====="*15)
         sys.stdout.flush()
 
 

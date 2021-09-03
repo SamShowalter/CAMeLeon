@@ -71,6 +71,9 @@ class RGBImgObsWrapper(gym.core.ObservationWrapper):
         obs = self.env.gen_obs()
         return self.observation(obs)
 
+    def __str__(self):
+        return "rgb_only"
+
 class ImgObsWrapper(gym.core.ObservationWrapper):
     """
     Use the image as the only observation output, no language/mission.
@@ -89,6 +92,9 @@ class ImgObsWrapper(gym.core.ObservationWrapper):
 
     def observation(self, obs):
         return obs['image']
+
+    def __str__(self):
+        return "encoding_only"
 
 class PartialObsWrapper(gym.core.Wrapper):
 
@@ -128,6 +134,10 @@ class PartialObsWrapper(gym.core.Wrapper):
         self.observation_space = spaces.Dict({
             'image': observation_space
         })
+
+
+    def __str__(self):
+        return "partial_obs"
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
@@ -225,7 +235,7 @@ class PartialObsWrapper(gym.core.Wrapper):
 
         # Filter and correct observation
         info['env'] = copy.deepcopy(obs['image'])
-        info['frame'] = copy.deepcopy(self.env.grid.img)
+        # info['frame'] = copy.deepcopy(self.env.grid.img)
         obs['image'] = self.get_obs_view(obs['image'])
 
         return obs, reward, done, info
@@ -247,6 +257,9 @@ class CanniballsOneHotWrapper(gym.core.ObservationWrapper):
             shape=(self.env.width, self.env.height, 4),  # number of cells
             dtype='uint8'
         )
+
+    def __str__(self):
+        return "canniballs_one_hot"
 
     def build_one_hot(self, obs):
         """Build one-hot from observation

@@ -13,6 +13,7 @@
 
 import pickle as pkl
 import hickle as hkl
+import json
 from operator import add
 
 #################################################################################
@@ -26,7 +27,6 @@ def _write_pkl(obj, filename):
 def _read_pkl(filename):
     with open(filename, 'rb') as file:
         return pkl.load(file)
-
 
 def _write_hkl(obj, filename):
     # with open(filename, 'wb') as file:
@@ -70,6 +70,25 @@ def _tup_mult(t1, t2):
     """
     return (t1[0]*t2[0],t1[1]*t2[1])
 
+def _save_metadata(args,outdir):
+    """Save metadata for execution
+
+    :args: Argparse.Args: User-defined arguments
+    :outdir: str: Ouput directory
+
+    """
+    with open("{}/metadata.json".format(outdir), 'wt') as f:
+        json.dump(args, f, indent=4,default=str)
+
+
+def _load_metadata(indir):
+    """Load metadata for execution
+
+    :indir: str: Input directory
+
+    """
+    with open("{}/metadata.json".format(indir)) as f:
+        return json.load(f)
 #######################################################################
 # Main
 #######################################################################

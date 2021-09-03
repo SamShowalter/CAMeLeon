@@ -15,6 +15,7 @@
 import os
 import sys
 import logging
+import matplotlib.pyplot as plt
 import re
 import numpy as np
 import argparse
@@ -23,101 +24,99 @@ sys.path.append("../interestingness-xdrl/")
 from interestingness_xdrl.analysis.config import AnalysisConfiguration
 from interestingness_xdrl.analysis.full import FullAnalysis
 
-from cameleon.utils.env import str2framework, str2list, str2bool,str2dict
+from cameleon.utils.env import str2framework, str2list, str2bool,str2dict, render_encoded_env
+from cameleon.utils.general import _load_metadata, _save_metadata
 from cameleon.interestingness.agent import CameleonInterestingnessAgent
 from cameleon.interestingness.environment import CameleonInterestingnessEnvironment
+
+# Set logging level
+logging.basicConfig(level=logging.INFO,
+                    format='%(message)s')
 
 #################################################################################
 #   User defined
 #################################################################################
 
-parser = argparse.ArgumentParser(description='Port Cameleon Rollouts into Interestingnes-xdrl for analysis')
+def create_parser(parser_creator=None):
+    """Create arguments parser
 
-# Required arguments
-parser.add_argument('--rollouts-path', default = None, required = True,help="Path to rollout directory with saved episodes")
-parser.add_argument('--model-name', default=None,required = True, type = str, help='SAC, PPO, PG, A2C, A3C, IMPALA, ES, DDPG, DQN, MARWIL, APEX, or APEX_DDPG')
-parser.add_argument('--env-name', default = None, required = True, help = "Any env registered with gym, including Gym Minigrid and Cameleon Environments")
+    :parser_creator: Argparse.Parser: Argument parser
 
-# Optional arguments
-parser.add_argument('--framework', default = "tf2",type=str2framework, help = "Deep learning framework to use on backend. Important that this is one of ['tf2','torch']")
-parser.add_argument('--use-hickle', default = False,type=str2bool, help = "Whether or not to read in rollouts that are from hickle v. pickle")
-parser.add_argument('--outdir', default='data/interestingness/',help='Directory to output results')
-parser.add_argument('--action-factors', default='direction',type=str2list, help='Semantic groupings of actions. In grid worlds, only direction is present.')
-parser.add_argument('--analysis-config', default = None, type=str2dict, help='Interesting analysis JSON-style config (python Dictionary)')
-parser.add_argument('--img-format', default = 'pdf', help='Format of images to be saved during analysis.')
-parser.add_argument('--clear', default = False, help='Whether to clear output directories before generating results.')
+    """
+    parser = argparse.ArgumentParser(description='Port Cameleon Rollouts into Interestingnes-xdrl for analysis')
+
+    # Required arguments
+    parser.add_argument('--rollouts-path',required = True,help="Path to rollout directory with saved episodes")
+
+    return create_optional_args(parser)
+
+
+
+def create_optional_args(parser):
+    """ Add optional arguments to argparse
+
+    :parser: Argparse.Args: User-defined arguments
+    :returns: TODO
+
+    """
+    # Optional arguments
+    parser.add_argument('--use-hickle', default = False,type=str2bool, help = "Whether or not to read in rollouts that are from hickle v. pickle")
+    parser.add_argument('--outdir', default='data/interestingness/',help='Directory to output results')
+    parser.add_argument('--action-factors', default='direction',type=str2list, help='Semantic groupings of actions. In grid worlds, only direction is present.')
+    parser.add_argument('--analysis-config', default = None, type=str2dict, help='Interesting analysis JSON-style config (python Dictionary)')
+    parser.add_argument('--analyses', default = 'all', type=str2list, help='Comma-separated string of interestingness analyses to run. You can also specify "all" to run all of them.')
+    parser.add_argument('--img-format', default = 'pdf', help='Format of images to be saved during analysis.')
+    parser.add_argument('--clear', default = False, help='Whether to clear output directories before generating results.')
+
+    return parser
 
 #################################################################################
 #   Helper Functions
 #################################################################################
 
-def _get_ancillary_execution_info(args):
+def _get_args_from_metadata(args,metadata):
     """Get other information about rollouts, like
     random seed, etc
 
     :args: Argparse.Args: User-defined arguments
 
     """
-    match = re.findall(r'_rs(\d+)_w(\d+)',args.rollouts_path)[0]
-    args.random_seed = int(match[0])
-    args.num_workers = int(match[1])
+    rollout_metadata = metadata['rollout']
+    train_metadata = metadata['train']
+    args.seed = rollout_metadata['seed']
+    args.num_workers = rollout_metadata['num_workers']
+    args.train_env_name = rollout_metadata['train_env_name']
+    args.rollout_env_name = rollout_metadata['rollout_env_name']
+    args.model_name = train_metadata['model_name']
+    args.framework = train_metadata['framework']
 
-def make_ixdrl_subdir(args):
-    """TODO: Docstring for make_ixdrl_subdir.
+#################################################################################
+#   Orch function to analyze interestingness
+#################################################################################
+
+def analyze_interestingness(args,parser = None):
+    """Analyze interestingness for environment
 
     :args: Argparse.Args: User-defined arguments
 
     """
-    args.outdir = "{}/cameleon_ixdrl_ep{}_rs{}_w{}".\
-        format(args.outdir,
-               args.num_episodes,
-               args.random_seed,
-               args.num_workers)
 
-    if not os.path.exists(args.outdir):
-        os.makedirs(args.outdir)
-
-
-#################################################################################
-#   Main Method
-#################################################################################
-
-def main():
-    """Main method run for argparse
-
-    :args: Argparse.Args: User provided arguments
-
-    """
-
-    # Get arguments from input
-    args = parser.parse_args()
-    _get_ancillary_execution_info(args)
+    # Get metadata and update argument parser
+    metadata = _load_metadata(args.rollouts_path)
+    _get_args_from_metadata(args,metadata)
 
     # Instantiate agent
     agent = CameleonInterestingnessAgent(args.rollouts_path,
-                                            args.env_name,
+                                            args.train_env_name,
                                             args.model_name,
                                             args.framework,
                                             outdir = args.outdir,
                                             action_factors=args.action_factors,
                                             use_hickle=args.use_hickle)
 
-    # Instantiate Environment
-    env = CameleonInterestingnessEnvironment(args.rollouts_path,
-                                            args.env_name,
-                                            args.model_name,
-                                            args.framework,
-                                            outdir = args.outdir,
-                                            action_factors = args.action_factors,
-                                            use_hickle = args.use_hickle)
-
     # Load rollouts
-    print("Getting agent interaction data")
+    logging.info("Getting agent interaction data")
     interaction_data = agent.get_interaction_datapoints()
-
-    # Load rollouts
-    print("\nGetting environment data")
-    env_data = env.collect_all_data()
 
     # load analysis config
     config = None
@@ -131,23 +130,40 @@ def main():
         config = AnalysisConfiguration()
 
     # creates full analysis with all analyses
-    analysis = FullAnalysis(interaction_data, config, args.img_format)
+    config.metadata = metadata; config.num_episodes = agent.num_episodes
+    analysis = FullAnalysis(interaction_data, config, analyses = args.analyses,img_fmt = args.img_format)
     logging.info('{} total analyses to be performed...'.format(len(analysis)))
 
 
-    # Make sure they will sit in same folder
-    assert env.out_root == agent.out_root,\
-        "ERROR: Environment and Agent for interestingness have"\
-        " different output roots: Env: {} - Agent: {}"\
-        .format(env.out_root,
-                agent.out_root)
-
     # runs and saves results
     args.outdir = agent.out_root
-    args.num_episodes = agent.num_episodes
-    make_ixdrl_subdir(args)
     analysis.analyze(args.outdir)
-    analysis.save(os.path.join(args.outdir, 'analyses.pkl.gz'))
+
+    # Get analysis configuration and add to metadata
+    # Remove metadata circular dependency
+    config.metadata = None
+    args.config = config.__dict__
+    metadata['interestingness'] = vars(args)
+    analysis.save(os.path.join(config.out_root, 'analyses.pkl.gz'))
+    _save_metadata(metadata,config.out_root)
+
+#######################################################################
+# Main method to run execution with argparse args
+#######################################################################
+
+def main():
+    """Main method run for argparse
+
+    :args: Argparse.Args: User provided arguments
+
+    """
+
+    # Get arguments from input
+    parser = create_parser()
+    args = parser.parse_args()
+
+    # Analyze interestingness
+    analyze_interestingness(args)
 
 
 #######################################################################

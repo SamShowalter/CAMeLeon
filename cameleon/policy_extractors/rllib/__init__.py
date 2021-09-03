@@ -246,7 +246,17 @@ class BaseRLlibPolicyExtractor(ABC):
 
         return []
 
-    def get_q_function_dist(self):
+    def get_q_values(self):
+        """TODO: Docstring for get_q_function_dist.
+
+        :arg1: TODO
+        :returns: TODO
+
+        """
+
+        return []
+
+    def get_twin_q_values(self):
         """TODO: Docstring for get_q_function_dist.
 
         :arg1: TODO
@@ -260,7 +270,4 @@ class BaseRLlibPolicyExtractor(ABC):
 #################################################################################
 #   Main Method
 #################################################################################
-
-
-
 

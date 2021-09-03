@@ -12,16 +12,18 @@
 #######################################################################
 
 OUTPUT_DIR="data/interestingness/"
-ENV_NAME="Cameleon-Canniballs-Easy-12x12-v0"
-# ROLLOUTS_PATH="rollouts/DQN_tf2_Cameleon-Canniballs-Easy-12x12-v0_ep100_2021.07.27/"
-ROLLOUTS_PATH="rollouts/DQN_torch_Cameleon-Canniballs-Medium-12x12-v0_ep1_ts0_rs42_w5_2021.08.09/"
-MODEL_NAME="DQN"
-FRAMEWORK="torch"
+ROLLOUTS_PATH="rollouts/APPO_torch_Cameleon-Canniballs-Easy-Fake-Corner-Disruption-12x12-v0_ep100_ts0_rs42_w1_2021.09.02"
 ACTION_FACTORS="direction"
-USE_HICKLE="true"
+ANALYSES="value,execution-uncertainty,execution-value"
+# Check this if not rolling out
+USE_HICKLE="false"
 ANALYSIS_CONFIG="{}"
 IMG_FORMAT="pdf"
 CLEAR="false"
+
+
+# Need to remove whitespaces
+ANALYSIS_CONFIG="${ANALYSIS_CONFIG//[$'\t\r\n ']}"
 
 #######################################################################
 # Run the script for training
@@ -34,11 +36,9 @@ clear
 
 # Run the script
 python -m cameleon.bin.analyze_interestingness \
-  --env-name=$ENV \
-  --model-name=$MODEL_NAME \
   --outdir=$OUTPUT_DIR \
-  --framework=$FRAMEWORK \
   --rollouts-path=$ROLLOUTS_PATH \
+  --analyses=$ANALYSES \
   --use-hickle=$USE_HICKLE \
   --action-factors=$ACTION_FACTORS \
   --analysis-config=$ANALYSIS_CONFIG \

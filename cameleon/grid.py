@@ -14,6 +14,7 @@
 import hashlib
 from enum import IntEnum
 import numpy as np
+import copy
 
 import gym
 from gym import error, spaces, utils
@@ -88,7 +89,6 @@ class Grid:
             return self.grid[j * self.width + i]
         except Exception as e:
             # Handles issues well enough
-            # print(e)
             # print("Error point",i,j)
             return 1
 
@@ -345,7 +345,8 @@ class CameleonEnv(gym.Env):
         max_steps=1000,
         see_through_walls=False,
         reward_range = (-10,10),
-        seed=1337,
+        disruptions = [],
+        seed=0,
         random_seed = True,):
 
         # Can't set both grid_size and width/height
@@ -390,17 +391,22 @@ class CameleonEnv(gym.Env):
         self.agent = None
         self.grid = None
 
+        # Set up disruptions
+        self.base_disruptions = disruptions
+        self.disruptions = []
+
         # Set random seed
-        self.np_random = None
-        self.seed(seed=seed,
-                    random_seed = random_seed)
-        self.random_seed = random_seed
+        self.seed(seed=seed)
+        self.reset_seed()
 
         # Initialize the state
         self.reset()
 
 
     def reset(self):
+
+        # Get new random seed for identical envs
+        self.reset_seed()
 
         # Current position and direction of the agent
         self.agent_pos = None
@@ -413,43 +419,55 @@ class CameleonEnv(gym.Env):
         # These fields should be defined by _gen_grid
         assert self.agent.cur_pos is not None
 
+
         # Item picked up, being carried, initially nothing
         self.carrying = None
 
         # Step count since episode start
         self.step_count = 0
 
+        # Instantiate all disruptions
+        self._init_disruptions()
+
         # Return first observation
         obs = self.gen_obs()
         return obs
 
-    def seed(self, seed = 1337,
-             random_seed = True):
+
+    def reset_seed(self):
         # Seed the random number generator
-        if random_seed:
-            # Choose a random seed
-            self.np_random = np.random
-        else:
-            self.np_random, _ = seeding.np_random(seed)
+        # if random_seed:
+        #     # Choose a random seed
+        #     self.np_random = np.random
+        # else:
+        seed=self.old_np_random.randint(0,2**32)
+        # print(seed)
+        # print("Reset seed {}".format(int(a)*int(b)))
+        self.np_random, _ = seeding.np_random(seed)
 
-        return
-
-    def hash(self, size=16):
-        """Compute a hash that uniquely identifies the current state of the environment.
-
-        :param size: Size of the hashing
-        """
-        sample_hash = hashlib.sha256()
-
-        to_encode = [self.grid.encode(), self.agent_pos, self.agent_dir]
-        for item in to_encode:
-            sample_hash.update(str(item).encode('utf8'))
-
-        return sample_hash.hexdigest()[:size]
+    def seed(self, seed = 1337):
+        # Seed the random number generator
+        # if random_seed:
+        #     # Choose a random seed
+        #     self.np_random = np.random
+        # else:
+        # print("Initial seed {}".format(seed))
+        self.old_np_random, _ = seeding.np_random(int(seed))
 
     @property
     def steps_remaining(self):
         return self.max_steps - self.step_count
+
+    def _init_disruptions(self):
+        """Initialize all disruptions
+
+        """
+        self.live_disruption = None
+        self.disruptions = []
+        disruptions = copy.deepcopy(self.base_disruptions)
+        for d in disruptions:
+            d.add_game(self)
+            self.disruptions.append(d)
 
     def __str__(self):
         """

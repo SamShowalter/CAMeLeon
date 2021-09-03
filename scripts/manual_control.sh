@@ -13,7 +13,8 @@
 # Set variable names
 #######################################################################
 
-ENV_NAME="Cameleon-Canniballs-Hard-12x12-v0"
+ENV_NAME="Cameleon-Canniballs-Easy-Corner-Disruption-12x12-v0"
+# ENV_NAME="Cameleon-Canniballs-Easy-12x12-v0"
 KEY_HANDLER="cameleon"
 SEED=-1
 TILE_SIZE=32

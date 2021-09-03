@@ -14,7 +14,10 @@ from ray.rllib.agents.registry import ALGORITHMS
 from cameleon.policy_extractors.rllib.ppo import PPOExtractor
 from cameleon.policy_extractors.rllib.appo import APPOExtractor
 from cameleon.policy_extractors.rllib.dqn import DQNExtractor
-
+from cameleon.policy_extractors.rllib.a2c import A2CExtractor
+from cameleon.policy_extractors.rllib.a3c import A3CExtractor
+from cameleon.policy_extractors.rllib.pg import PGExtractor
+from cameleon.policy_extractors.rllib.impala import IMPALAExtractor
 
 #################################################################################
 # Agent roster for objects
@@ -22,9 +25,9 @@ from cameleon.policy_extractors.rllib.dqn import DQNExtractor
 
 # Taken from RLlib template
 EXTRACTORS = {
-    # "A2C": _import_a2c,
-    # "A3C": _import_a3c,
-    # "APEX": _import_apex,
+    "A2C": A2CExtractor,
+    "A3C": A3CExtractor,
+    "APEX": DQNExtractor,
     # "APEX_DDPG": _import_apex_ddpg,
     "APPO": APPOExtractor,
     # "ARS": _import_ars,
@@ -36,14 +39,15 @@ EXTRACTORS = {
     "DQN": DQNExtractor,
     # "SlateQ": _import_slate_q,
     # "DREAMER": _import_dreamer,
-    # "IMPALA": _import_impala,
+    "IMPALA": IMPALAExtractor,
     # "MAML": _import_maml,
     # "MARWIL": _import_marwil,
     # "MBMPO": _import_mbmpo,
-    # "PG": _import_pg,
+    "PG": PGExtractor,
     "PPO": PPOExtractor,
     # "QMIX": _import_qmix,
-    # "R2D2": _import_r2d2,
+    "R2D2": DQNExtractor,
+    "DDPPO": PPOExtractor,
     # "SAC": _import_sac,
     # "SimpleQ": _import_simple_q,
     # "TD3": _import_td3,

@@ -28,11 +28,82 @@ from ray.tune.logger import Logger, UnifiedLogger
 
 # Import information from cameleon
 from cameleon.base_objects import *
+from cameleon.envs import *
 from cameleon.wrappers import *
 
 #################################################################################
 #   Function-Class Declaration
 #################################################################################
+
+def _render_tile(obj,
+                tile_size=32,
+                subdivs=3):
+    """
+    Render a tile and cache the result
+
+    :obj: WorldObj: Object to place
+    :highlight: bool: Whether or not to highlight
+    :tile_size: Int: Render tile size
+    :subdivs: Int: Subdivisions
+    """
+
+    # Hash map lookup key for the cache
+    # Need to look into this hash map
+    img = np.zeros(shape=(tile_size * subdivs, tile_size * subdivs, 3), dtype=np.uint8)
+
+    # Draw the grid lines (top and left edges)
+    fill_coords(img, point_in_rect(0, 0.031, 0, 1), (100, 100, 100))
+    fill_coords(img, point_in_rect(0, 1, 0, 0.031), (100, 100, 100))
+
+    if obj != None:
+        obj.render(img)
+
+    # Downsample the image to perform supersampling/anti-aliasing
+    img = downsample(img, subdivs)
+
+    return img
+
+def render_encoded_env(
+    encoded_env,
+    tile_size=32,
+    subdivs = 3):
+    """
+    Render this grid at a given scale
+
+    :tile_size: Int:             Render tile size
+    :highlight_mask: np.ndarray: Highlight mask
+
+    """
+
+    # Compute the total grid size
+    width, height = encoded_env.shape[:2]
+    width_px = width * tile_size
+    height_px = height * tile_size
+
+    img = np.zeros(shape=(height_px, width_px, 3), dtype=np.uint8)
+
+    # Render the grid
+    for j in range(0, height):
+        for i in range(0, width):
+            obj = IDX_TO_INIT_OBJECT[encoded_env[i,j,0]]
+            if obj:
+                obj.color = IDX_TO_COLOR[encoded_env[i,j,1]]
+
+            tile_img = _render_tile(
+                obj,
+                tile_size=tile_size,
+                subdivs = subdivs
+            )
+
+            ymin = j * tile_size
+            ymax = (j+1) * tile_size
+            xmin = i * tile_size
+            xmax = (i+1) * tile_size
+            img[ymin:ymax, xmin:xmax, :] = tile_img
+
+    return img
+
+
 
 def cameleon_logger_creator(custom_path):
     """
@@ -201,7 +272,7 @@ def str2bool(v):
     elif v.lower() in ('no', 'false', 'f', 'n', '0'):
         return False
     else:
-        assert False, "Error: Input to str2bool unexpected"
+        assert False, "Error: Input to str2bool unexpected - {}".format(v)
 
 def str2dict(d_s):
     """Convert string to dictionary

@@ -39,7 +39,7 @@ class CameleonInterestingnessEnvironment(Environment):
                  framework,
                  outdir = "data/interestingness/",
                  action_factors = ['left','right','up','down'],
-                 rollout_regex =r'[a-z\d]*_ep(\d+)_s(\d+)_r*(.+).[ph]kl',
+                 rollout_regex =r'[a-z\d]*_cp(\d+)_s(\d+)_r*(.+).[ph]kl',
                  use_hickle = True,
                  seed = None):
 
@@ -86,6 +86,7 @@ class CameleonInterestingnessEnvironment(Environment):
 
         self.episodes[episode_id] = {"data":{},
                                      "steps":steps,
+                                     "name":episode_id.replace(".{}".format(self.ext),""),
                                      "epochs_trained":epochs,
                                      "total_reward":reward,
                                      "filepath":episode_filepath}
@@ -104,7 +105,7 @@ class CameleonInterestingnessEnvironment(Environment):
         """
         t = timestep_data
         episode[timestep] = {
-                                "frame":       t['info']['frame'],
+                                "frame":       t['info']['env'],
                                 "observation": t['observation'],
                                 "action":      t["action"],
                                 "new_episode": (timestep == 0)
@@ -153,7 +154,7 @@ class CameleonInterestingnessEnvironment(Environment):
         :returns: list[str]: List of rollout files (recursive)
 
         """
-        self.rollout_paths = glob.glob(self.rollout_dir + "**/*.{}"\
+        self.rollout_paths = glob.glob(self.rollout_dir + "/**/*.{}"\
                                        .format(self.ext),recursive=True)
         assert len(self.rollout_paths) > 0,\
             "ERROR: Rollout directory did not find any files"

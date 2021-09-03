@@ -19,7 +19,6 @@ import numpy as np
 import os
 import hashlib
 
-
 import tensorflow as tf
 import torch
 
@@ -58,7 +57,7 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         self.model = args.model_name
         self.framework = config['framework']
         self.no_frame = args.no_frame
-        self.train_epochs = self._extract_train_epochs()
+        self.epochs_trained = self._extract_train_epochs()
         self.use_hickle = args.use_hickle
         self.write_compressed = _write_hkl if self.use_hickle else _write_pkl
         self.read_compressed = _read_hkl if self.use_hickle else _write_pkl
@@ -87,7 +86,6 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
                       "Default filename has been altered. Defaulting to 0")
                 return 0
 
-
     def write_episode(self):
         """Write the episode
 
@@ -95,10 +93,9 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         obs_hash = hashlib.shake_256(str(self.first_obs).encode()).hexdigest(6)
         self.first_obs = None
 
-        # and len(self.rollout) > 0
-        self.episode_id = "{}_ep{}_s{}_r{}_pid{}-{}.{}".format(
+        self.episode_id = "{}_cp{}_s{}_r{}_pid{}-{}.{}".format(
                                          obs_hash,
-                                         self.train_epochs,
+                                         self.epochs_trained,
                                          self.step_num,
                                          str(round(self.reward_total)).replace("-","n"),
                                          self.episode_num,
@@ -119,9 +116,6 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
             "after env reset!"
 
 
-        # print("episode {} (env-idx={}) started.".format(
-        #     episode.episode_id, env_index))
-        # print(episode.episode_id)
         self.episode = {}
         self.step_num = 0
         self.first_obs = None
@@ -131,9 +125,6 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         # Environment observation at start
         env = base_env.get_unwrapped()[0]
         obs = env.gen_obs()
-
-        # THIS CAUSES ERRORS
-        # obs = env.reset()
 
         # Get the last observation
         self.first_obs = obs
@@ -182,7 +173,7 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
             "pi_info":pe.get_last_pi_info(),
             "value_function":pe.get_value_function_estimate(),
             "action_dist" : pe.get_action_dist(),
-            "q_function_dist": pe.get_q_function_dist(),
+            "q_values": pe.get_q_values(),
             "action_logits":pe.get_action_logits()
         }
 
@@ -200,6 +191,7 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         # Write episode and delete last observation
         # since there was no action taken, roll back steps
         del self.episode[self.step_num]
+
         # self.step_num -=1
         self.write_episode()
 
