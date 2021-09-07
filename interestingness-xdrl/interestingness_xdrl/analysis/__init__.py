@@ -7,6 +7,7 @@ import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import multiprocessing as mp
 from abc import abstractmethod, ABC
 from collections import OrderedDict
