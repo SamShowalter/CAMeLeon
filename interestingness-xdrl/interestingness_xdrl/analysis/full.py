@@ -1,6 +1,4 @@
 import os
-import sys
-import copy
 import gzip
 import logging
 import pickle
@@ -27,7 +25,7 @@ class FullAnalysis(AnalysisBase):
     This is mostly useful to organize all analyses and create separate directories in which to save reports.
     """
 
-    def __init__(self, data, analysis_config, analyses = ['all'],img_fmt='pdf'):
+    def __init__(self, data, analysis_config, img_fmt):
         """
         Creates a new analysis set.
         :param list[InteractionDataPoint] data: the interaction data collected to be analyzed.
@@ -37,36 +35,25 @@ class FullAnalysis(AnalysisBase):
         super().__init__(data, analysis_config, img_fmt)
         self._analyses_dict = OrderedDict({
             '0-task': OrderedDict({
-                'reward': RewardAnalysis,
-                'aleatoric-uncertainty': AleatoricUncertaintyAnalysis,
-                'epistemic-uncertainty-var': EpistemicUncertaintyVarianceAnalysis,
-                'epistemic-uncertainty-jrd': EpistemicUncertaintyJRDAnalysis,
-                'epistemic-uncertainty-kld': EpistemicUncertaintyKLDivAnalysis,
+                # 'reward': RewardAnalysis(data, analysis_config, img_fmt),
+                # 'aleatoric-uncertainty': AleatoricUncertaintyAnalysis(data, analysis_config, img_fmt),
+                # 'epistemic-uncertainty-var': EpistemicUncertaintyVarianceAnalysis(data, analysis_config, img_fmt),
+                # 'epistemic-uncertainty-jrd': EpistemicUncertaintyJRDAnalysis(data, analysis_config, img_fmt),
+                # 'epistemic-uncertainty-kld': EpistemicUncertaintyKLDivAnalysis(data, analysis_config, img_fmt),
             }),
             '1-interaction': OrderedDict({
-                'execution-uncertainty': ExecutionCertaintyAnalysis,
-                'value': ValueAnalysis,
-                'action-value': ActionValueAnalysis,
-                'execution-value': ExecutionValueAnalysis,
+                'execution-certainty': ExecutionCertaintyAnalysis(data, analysis_config, img_fmt),
+                'value': ValueAnalysis(data, analysis_config, img_fmt),
+                # 'action-value': ActionValueAnalysis(data, analysis_config, img_fmt),
+                # 'execution-value': ExecutionValueAnalysis(data, analysis_config, img_fmt)
             }),
             '2-meta': OrderedDict(
                 {}),
         })
 
-        if (isinstance(analyses,list) and (analyses[0] != 'all')):
-            analyses_dict = copy.deepcopy(self._analyses_dict)
-            analyses = set(analyses)
-            for level, dim_analyses in self._analyses_dict.items():
-                for dimension, analysis in dim_analyses.items():
-                    if dimension not in analyses:
-                        del analyses_dict[level][dimension]
-
-        self._analyses_dict = analyses_dict
         self._analyses_list = []
-        self.analysis_config = analysis_config
-        self.img_fmt = img_fmt
-        # for dim_analyses in self._analyses_dict.values():
-        #     self._analyses_list.extend(dim_analyses.values())
+        for dim_analyses in self._analyses_dict.values():
+            self._analyses_list.extend(dim_analyses.values())
 
     def __len__(self):
         return len(self._analyses_list)
@@ -92,20 +79,11 @@ class FullAnalysis(AnalysisBase):
             logging.info('===================================================================')
             logging.info('Analyzing on introspection level \'{}\'...'.format(level))
             logging.info('===================================================================')
-            self.analysis_config.out_root = os.path.join(output_dir,
-                                       "{}_ep{}_rs{}_w{}".format(
-                                           self.config.metadata['rollout']['rollout_env_name'],
-                                           self.config.num_episodes,
-                                           self.config.metadata['rollout']['seed'],
-                                           self.config.metadata['rollout']['num_workers']))
             for dimension, analysis in dim_analyses.items():
                 logging.info('___________________________________________________________________')
-                self.analysis_config.outdir = os.path.join(self.analysis_config.out_root, level, dimension)
-                os.makedirs(self.analysis_config.outdir, exist_ok=True)
-                analysis = analysis(self.data,self.analysis_config, self.img_fmt, tag =dimension.replace("-","_"))
-                self._analyses_list.append(analysis)
-                self.data = analysis.analyze(self.analysis_config.outdir)
-
+                out_dir = os.path.join(output_dir, level, dimension)
+                os.makedirs(out_dir, exist_ok=True)
+                analysis.analyze(out_dir)
 
     def get_element_time(self, t):
         pass

@@ -23,8 +23,7 @@ from tqdm import tqdm, trange
 
 # Cameleon packages
 from cameleon.utils.ftp import CameleonHttpFTP, CAMELEON_DIR_DICT
-from cameleon.utils.env import str2bool, str2dict, dict2str, str2list
-
+from cameleon.utils.env import str2bool, str2dict, dict2str, str2list,str2log_level
 
 #####################################################################################
 # Argparse formation
@@ -62,6 +61,8 @@ parser.add_argument('--zip-only',
                     help="Just zip the data, do not post yet")
 parser.add_argument('--post-only', default = False,
                     type =str2bool, help="Just post all existing data in archive")
+parser.add_argument('--log-level', default = "info", type=str2log_level,
+                    help = "Get logging level from input args: 'info' | 'warn','warning' | 'error' | 'critical' ")
 
 #################################################################################
 #   Main Method
@@ -83,7 +84,9 @@ def main():
                           dirs = args.dirs,
                           dir_dict = args.dir_dict,
                           overwrite=args.overwrite,
-                          archive = args.archive)
+                          archive = args.archive,
+                          log_level=args.log_level)
+
     # Run file transfer
     ftp.run()
 

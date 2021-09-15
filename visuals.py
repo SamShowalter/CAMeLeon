@@ -1,8 +1,8 @@
 #################################################################################
 #
-#             Project Title:  Food item for CAML sandbox
+#             Project Title:  Visuals for Analysis
 #             Author:         Sam Showalter
-#             Date:           2021-06-30
+#             Date:           2021-09-15
 #
 #################################################################################
 
@@ -11,27 +11,41 @@
 #   Module Imports
 #################################################################################
 
-import numpy as np
+import os
+import copy
+import shutil
 import sys
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
 
 #################################################################################
 #   Function-Class Declaration
 #################################################################################
 
+df = pd.read_csv('data/interestingness/APPO_torch_Cameleon-Canniballs-Medium-12x12-v0/Cameleon-Canniballs-Hard-12x12-v0_ep329_rs42_w10/1-interaction/execution-uncertainty/mean-exec-div-time.csv')
 
-class Food:
-    """
-    Food item to nourish both the foes and the items
-    """
-    def __init__(self,game):
-        self.game = game
-        self.size = game.determine_food_size()
-        self.x = None
-        self.y = None
-        self.distance = None
-        self.color = (128,0,128)
+print(df.columns)
 
-        self.game.find_valid_start_position(self)
+sdf = df[['agent_pos_x','agent_pos_y','mean_action_execution_div']].values.tolist()
+
+# print(sdf)
+
+support = np.zeros((12,12))
+uncert = np.zeros((12,12))
+for i in range(len(sdf)):
+    x,y,u = sdf[i]
+    x,y = int(x),int(y)
+    support[x,y] +=1
+    uncert[x,y] += u
+
+plot = sns.heatmap(uncert/support)
+plt.savefig('test_heat.png')
+
+
+
+
 
 
 #################################################################################

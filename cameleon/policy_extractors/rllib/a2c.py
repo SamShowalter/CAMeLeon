@@ -29,6 +29,7 @@ class A2CExtractor(BaseRLlibPolicyExtractor):
     """Docstring for A2CExtractor. """
 
     def __init__(self,
+                 to_collect,
                  model,
                  episode,
                  worker,
@@ -37,6 +38,7 @@ class A2CExtractor(BaseRLlibPolicyExtractor):
                  episode_start):
 
         BaseRLlibPolicyExtractor.__init__(self,
+                                          to_collect,
                                           model,
                                           episode,
                                           worker,

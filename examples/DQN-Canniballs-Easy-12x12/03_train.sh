@@ -29,7 +29,6 @@ NUM_GPUS=1
 
 # Model and execution information
 FRAMEWORK="torch"
-VERBOSE="true"
 TUNE="false"
 CONFIG="""{
 'model':{'dim':12,
@@ -64,5 +63,4 @@ python -m cameleon.bin.train \
   --checkpoint-path=$CHECKPOINT_PATH \
   --framework=$FRAMEWORK \
   --tune=$TUNE \
-  --config=$CONFIG \
-  --verbose=$VERBOSE 
+  --config=$CONFIG 

@@ -1,0 +1,15 @@
+{
+  "py/object": "interestingness_xdrl.analysis.config.AnalysisConfiguration",
+  "num_processes": -1,
+
+  "rwd_outlier_stds": 2,
+
+  "certain_exec_max_div": 0.001,
+  "uncertain_exec_min_div": 0.1,
+
+  "value_outlier_stds": 2.5,
+  "pred_error_outlier_stds": 2,
+
+  "aleatoric_outlier_stds": 2,
+  "epistemic_outlier_stds": 3
+}

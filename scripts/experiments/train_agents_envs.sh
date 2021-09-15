@@ -30,10 +30,7 @@ SEED=42
 TUNE="false"
 VERBOSE="true"
 RAY_OBJ_STORE_MEM=3500000000
-EMAIL_UPDATES="false"
-EMAIL_SERVER="smtp.mail.yahoo.com"
-EMAIL_SENDER="sam.showalter@ymail.com"
-EMAIL_RECEIVER="samuelrshowalter@gmail.com"
+LOG_LEVEL="info"
 CONFIG="""{
 'model':{'dim':12,
          'conv_filters':[[16,[4,4],1],
@@ -76,4 +73,4 @@ python -m cameleon.bin.experiments.train_agents_envs \
   --email-server=$EMAIL_SERVER \
   --email-sender=$EMAIL_SENDER \
   --email-receiver=$EMAIL_RECEIVER \
-  --verbose=$VERBOSE 
+  --log-level=$LOG_LEVEL 

@@ -46,14 +46,11 @@ from gym import wrappers as gym_wrappers
 # Custom imports
 import cameleon.envs
 from cameleon.wrappers import EpisodeWriterWrapper
-from cameleon.utils.env import load_env, str2bool, str2model, str2int, str2list,\
-    str2wrapper, wrap_env, str2str, cameleon_logger_creator, str2dict, str2framework
+from cameleon.utils.env import load_env, wrap_env, cameleon_logger_creator
+from cameleon.utils.parser import str2bool, str2model, str2int, str2list,\
+    str2wrapper, str2str, str2dict, str2framework, str2log_level
 from cameleon.utils.general import _read_hkl, _write_hkl, _read_pkl, _load_metadata, _save_metadata
 from cameleon.callbacks.agent.rllib import RLlibIxdrlCallbacks
-
-# Set logging level
-logging.basicConfig(level=logging.INFO,
-                    format='%(message)s')
 
 #######################################################################
 # Create parser
@@ -113,6 +110,8 @@ def create_optional_args(parser):
                         help="Number of complete episodes to roll out. Rollout will also stop "
                         "if `--num-timesteps` limit is reached first. A value of 0 means "
                         "no limitation on the number of episodes run.")
+    parser.add_argument("--to-collect", default="action_dist,action_logits,value_function",type=str2list,
+                        help="Items to collect from rollouts beyond obs, action, reward, done")
     parser.add_argument("--outdir", default='rollouts/',
                         help="Output directory for rollouts")
     parser.add_argument("--imago-dir", default="data/imago/",
@@ -138,6 +137,8 @@ def create_optional_args(parser):
                         help="Number of rollout workers to utilize during training")
     parser.add_argument('--num-gpus', default = 1,type = int,
                         help="Number of GPUs to utilize during training. Generally this is not bottleneck, so 1 is often sufficient")
+    parser.add_argument('--log-level', default = "info", type=str2log_level,
+                        help = "Get logging level from input args: 'info' | 'warn','warning' | 'error' | 'critical' ")
     parser.add_argument('--wrappers', default="", type = str2wrapper,  help=
                         """
                             Wrappers to encode the environment observation in different ways. Wrappers will be executed left to right,
@@ -290,8 +291,7 @@ def bundle_rollouts(subdirs,
 
         # Suffix and filepath - I know, this is messy.
         writer_file = writer_dict["pid{}-{}".format(ep,pid)]
-        writer_suffix = re.sub(r'_pid(\d+)-(\d+).[ph]kl', '',
-                               writer_file.split("/")[-1])
+        writer_suffix = writer_file.split("/")[-1]
 
         # Make rollout subdirectory
         rollout_subdir = "{}/{}".format(writer_dir,
@@ -302,9 +302,8 @@ def bundle_rollouts(subdirs,
 
         # Replace file and move to subdir
         os.replace(writer_file,
-                "{}/{}.{}".format(rollout_subdir,
-                               writer_suffix,
-                                  ext))
+                "{}/{}".format(rollout_subdir,
+                               writer_suffix))
 
         # Only move if they exist
         if monitor:
@@ -454,6 +453,7 @@ def load_config(args):
     config["num_gpus"] = args.num_gpus
     args.ext ="hkl" if args.use_hickle else "pkl"
     args.read_compressed = _read_hkl if args.use_hickle else _read_pkl
+    args.epochs_trained = None
 
     # Add random seed
     config["seed"] = args.seed
@@ -854,15 +854,30 @@ def run_rollouts(args,config):
     cls = get_trainable_cls(args.model_name)
 
     # Instantiate agent
-    # config['evaluation_num_workers'] = 5
     agent = cls(env=args.env_name, config=config,
                 logger_creator = cameleon_logger_creator(
                                     args.writer_dir))
 
     # Restore agent if needed
     if args.checkpoint_path:
+
+        # This is not ideal, but only way to guarantee
+        # correct information about model. Add slight overhead
+        # Need to restore the model for rollouts but, then
+        # must restart to feed information to logger
+        logging.info("Restoring agent twice to feed information correctly to logger")
         agent.restore(args.checkpoint_path)
-        args.epochs_trained = agent._iteration
+
+        # Make sure configuration has the correct outpath
+        args.epochs_trained = agent._iteration if agent._iteration is not None else 0
+
+        # Make sure configuration has the correct outpath
+        config['callbacks'] = lambda: RLlibIxdrlCallbacks(
+                                                            args = args,
+                                                            config = config)
+        # Need to run setup again with new callbacks
+        agent.setup(config)
+        agent.restore(args.checkpoint_path)
 
     # Do the actual rollout.
     run_rollout(agent,env, args.env_name,
@@ -898,6 +913,10 @@ def rollout(args, parser=None):
     argparse parser
 
     """
+
+    # Set logging level
+    logging.basicConfig(level=args.log_level,
+                        format='%(message)s')
 
     # Load up metadata if a checkpoint is provided
     metadata = {"rollout":None}

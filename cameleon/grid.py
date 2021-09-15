@@ -419,7 +419,6 @@ class CameleonEnv(gym.Env):
         # These fields should be defined by _gen_grid
         assert self.agent.cur_pos is not None
 
-
         # Item picked up, being carried, initially nothing
         self.carrying = None
 

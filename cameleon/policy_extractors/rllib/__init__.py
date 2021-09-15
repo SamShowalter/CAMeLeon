@@ -25,7 +25,8 @@ from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 # Build Rllib extractor
 #################################################################################
 
-def build_rllib_policy_extractor(model,
+def build_rllib_policy_extractor(to_collect,
+                                 model,
                                 episode,
                                 worker,
                                 framework = "tf2",
@@ -43,7 +44,8 @@ def build_rllib_policy_extractor(model,
     """
     from cameleon.policy_extractors.rllib.registry import EXTRACTORS
 
-    return EXTRACTORS[model](model,
+    return EXTRACTORS[model](to_collect,
+                            model,
                              episode,
                              worker,
                              framework,
@@ -59,6 +61,7 @@ class BaseRLlibPolicyExtractor(ABC):
     """Extracts Policy Information from RLlib"""
 
     def __init__(self,
+                 to_collect,
                  model,
                  episode,
                  worker,
@@ -73,6 +76,7 @@ class BaseRLlibPolicyExtractor(ABC):
         :env: GymVectorizedEnv: Environment for game, vectorized
 
         """
+        self.to_collect = to_collect
         self.episode = episode
         self.model = model
         self.env = env
@@ -84,8 +88,35 @@ class BaseRLlibPolicyExtractor(ABC):
             self.model_out = self._get_model_out()
         self.logits = None
 
+        self.method_dict = {"value_function":"get_value_function_estimate",
+                            "action_dist":"get_action_dist",
+                            "action_logits":"get_action_logits",
+                            "q_values":"get_q_values",
+                            "twin_q_values":"get_twin_q_values",
+                            "done":"get_last_done",
+                            "info":"get_last_info",
+                            "reward":"get_last_reward",
+                            "action":"get_last_action",
+                            "observation":"get_last_observation",
+                            "agent_pos":"get_last_agent_pos",
+                            "advantage":"get_advantage_estimate",
+                            "pi_info":"get_last_pi_info"
+                            }
+
+        self._validate_extraction()
+
         assert self.framework in ['tf','tf2', 'torch'],\
             "ERROR: framework needs to be tf, tf2, or torch"
+
+    def _validate_extraction(self):
+        """Validate extraction request can be completed
+
+        """
+        for req in self.to_collect:
+            assert ((req in self.method_dict) and
+                    hasattr(self,self.method_dict[req])),\
+                f"ERROR: Feature request {req} with method {self.method_dict[req]}"\
+                 " either not found in method dictionary or within object itself"
 
     def _expand_dims(self, tensor,
                      axis = 0):
@@ -143,6 +174,12 @@ class BaseRLlibPolicyExtractor(ABC):
             obs = obs[0]
         return obs
 
+    def call_method(self, method):
+        """
+        Call a method by the string name
+        """
+        return getattr(self, self.method_dict[method])()
+
     def get_last_pi_info(self):
         """Get last pi info stats,
         which may vary by policy
@@ -151,6 +188,17 @@ class BaseRLlibPolicyExtractor(ABC):
 
         """
         return self.episode.last_pi_info_for()
+
+
+    def get_last_agent_pos(self):
+        """
+        Returns last observation, just keeps API
+        consistent
+
+        :returns: observation
+
+        """
+        return self.env.agent.cur_pos
 
     def get_last_observation(self):
         """
@@ -183,7 +231,6 @@ class BaseRLlibPolicyExtractor(ABC):
 
     def get_last_done(self):
         """Get last done
-        TODO: This does not work!
         DO NOT USE THIS, it never shows
         done = True
 
@@ -247,21 +294,13 @@ class BaseRLlibPolicyExtractor(ABC):
         return []
 
     def get_q_values(self):
-        """TODO: Docstring for get_q_function_dist.
-
-        :arg1: TODO
-        :returns: TODO
-
+        """Get Q values
         """
 
         return []
 
     def get_twin_q_values(self):
-        """TODO: Docstring for get_q_function_dist.
-
-        :arg1: TODO
-        :returns: TODO
-
+        """Get twin Q values
         """
 
         return []

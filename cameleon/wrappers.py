@@ -144,7 +144,6 @@ class PartialObsWrapper(gym.core.Wrapper):
 
     def get_obs_view_location(self):
         """Get location of observation box
-        :returns: TODO
 
         """
         agent_pos = self.agent.cur_pos
@@ -359,7 +358,6 @@ class EpisodeWriterWrapper(gym.core.Wrapper):
 
     def write_episode(self):
         """Write the episode
-        :returns: TODO
 
         """
 
@@ -402,7 +400,7 @@ class EpisodeWriterWrapper(gym.core.Wrapper):
         """Action taken for the last state of
         the env
 
-        :action: TODO
+        :action: action_space.Action: Action taken by agent
 
         """
 

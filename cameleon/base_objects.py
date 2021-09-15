@@ -38,6 +38,7 @@ COLORS = {
     'red'   : np.array([255, 0, 0]),
     'orange': np.array([255, 165, 0]),
     'green' : np.array([0, 255, 0]),
+    'pink' : np.array([255,51, 143]),
     'blue'  : np.array([0, 0, 255]),
     'purple': np.array([112, 39, 195]),
     'yellow': np.array([255, 255, 0]),
@@ -57,7 +58,8 @@ COLOR_TO_IDX = {
     'purple': 4,
     'orange': 5,
     'yellow': 6,
-    'grey'  : 7
+    'grey'  : 7,
+    'pink'  : 8
 }
 
 # Reverse dict for index to color
@@ -188,6 +190,52 @@ class WorldObj:
         """Draw this object with the given renderer"""
         raise NotImplementedError
 
+#######################################################################
+# Base Disruption
+#######################################################################
+
+
+class BaseDisruption(object):
+
+    """
+    Base disruption class for cameleon objects
+    """
+
+    def __init__(self,
+                 start_fn,
+                 end_fn,
+                 grid):
+
+        self.start_fn = start_fn
+        self.end_fn = end_fn
+        self.active = False
+        self.active_timesteps = 0
+        self.grid = grid
+
+    def add_game(self, game):
+        """Add game to disruption
+
+        :game: Game for disruption
+
+        """
+        self.game = game
+        self._init_disruption(game.width, game.height)
+
+    def place_objs(self):
+        """
+
+        """
+        raise NotImplementedError
+
+
+    def _init_disruption(self,width,height):
+        """Initialize disruption
+
+        :width: int: Width of grid
+        :height: int: height of grid
+
+        """
+        raise NotImplementedError
 #######################################################################
 #    Food
 #######################################################################

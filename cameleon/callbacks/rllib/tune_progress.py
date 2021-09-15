@@ -28,7 +28,6 @@ class CameleonRLlibTuneReporter(CLIReporter):
     """CLI Reporter Instantiation for Cameleon RLlib Tune compatibility"""
 
     def __init__(self, args,**kwargs):
-        """TODO: to be defined. """
         CLIReporter.__init__(self,**kwargs)
         self.args = args
 

@@ -29,12 +29,9 @@ from gym import wrappers as gym_wrappers
 
 # Custom imports
 import cameleon.envs
-from cameleon.utils.env import str2bool, str2int, str2list, str2dict
+from cameleon.utils.parser import str2bool, str2int, str2list, str2dict
 from cameleon.bin.analyze_interestingness import create_optional_args, analyze_interestingness
 
-# Set logging level
-logging.basicConfig(level=logging.INFO,
-                    format='%(message)s')
 
 #################################################################################
 #   Function-Class Declaration
@@ -101,6 +98,11 @@ def run_interestingness_experiment(master_args,parser):
     :args: Argparse.Args: User-defined args
 
     """
+
+
+    # Set logging level
+    logging.basicConfig(level=master_args.log_level,
+                        format='%(message)s')
 
     # Validate given directories
     logging.info("Validating directories")

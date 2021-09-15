@@ -25,7 +25,6 @@ class DynamicObstaclesEnv50x50(DynamicObstaclesEnv):
     """Large minigrid environment"""
 
     def __init__(self):
-        """TODO: to be defined. """
         super().__init__(size = 50,
                          n_obstacles=12)
 
@@ -35,7 +34,6 @@ class DynamicObstaclesEnv42x42(DynamicObstaclesEnv):
     """Large minigrid environment"""
 
     def __init__(self):
-        """TODO: to be defined. """
         super().__init__(size = 42,
                          n_obstacles=12)
 
@@ -44,7 +42,6 @@ class DynamicObstaclesEnv20x20(DynamicObstaclesEnv):
     """Large minigrid environment"""
 
     def __init__(self):
-        """TODO: to be defined. """
         super().__init__(size = 20,
                          n_obstacles=8)
 
@@ -53,7 +50,6 @@ class DynamicObstaclesEnv100x100(DynamicObstaclesEnv):
     """Large minigrid environment"""
 
     def __init__(self):
-        """TODO: to be defined. """
         super().__init__(size = 100,
                          n_obstacles=45)
 

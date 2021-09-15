@@ -23,11 +23,9 @@ from gym_minigrid.wrappers import *
 
 import cameleon.envs
 from cameleon.wrappers import *
-from cameleon.utils.env import str2wrapper, str2bool, wrap_env
+from cameleon.utils.parser import str2wrapper, str2bool, str2log_level
+from cameleon.utils.env import wrap_env
 
-# Set logging level
-logging.basicConfig(level=logging.INFO,
-                    format='%(message)s')
 
 #################################################################################
 # Define argument parser arguments
@@ -40,6 +38,7 @@ parser.add_argument("--num-resets", default=1000, type = int, help = "Number of 
 parser.add_argument("--num-viz-frames", default=1000, type = int, help = "Number of frame to examine for visual rendering test")
 parser.add_argument("--num-enc-frames", default=5000, type = int, help = "Number of frame to examine for encoded rendering test")
 parser.add_argument("--visual", default=False, type = str2bool, help="Whether or not to check visual rendering")
+parser.add_argument('--log-level', default = "info", type=str2log_level, help = "Get logging level from input args: 'info' | 'warn','warning' | 'error' | 'critical' ")
 parser.add_argument('--wrappers', default="encoding_only", type = str2wrapper,  help=
                   """
                   Wrappers to encode the environment observation in different ways. Wrappers will be executed left to right, and the options are as follow:
@@ -127,6 +126,10 @@ def main():
     """
     # Init argparse args
     args = parser.parse_args()
+
+    # Set logging level
+    logging.basicConfig(level=args.log_level,
+                        format='%(message)s')
 
     #Build environment
     env = gym.make(args.env_name)

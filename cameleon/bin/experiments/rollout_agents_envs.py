@@ -30,12 +30,9 @@ from gym import wrappers as gym_wrappers
 
 # Custom imports
 import cameleon.envs
-from cameleon.utils.env import str2bool, str2int, str2list, str2dict
+from cameleon.utils.parser import str2bool, str2int, str2list, str2dict
 from cameleon.bin.rollout import create_optional_args,rollout
 
-# Set logging level
-logging.basicConfig(level=logging.INFO,
-                    format='%(message)s')
 
 #################################################################################
 #  Create argument parser
@@ -168,6 +165,10 @@ def run_rollout_experiment(master_args,parser):
 
     # Start by initializing Ray
     init_ray = True
+
+    # Set logging level
+    logging.basicConfig(level=master_args.log_level,
+                        format='%(message)s')
 
     # Validate given directories
     logging.info("Validating directories")

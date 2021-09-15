@@ -27,12 +27,9 @@ from gym import wrappers as gym_wrappers
 
 # Custom imports
 import cameleon.envs
-from cameleon.utils.env import str2bool, str2int, str2list, str2dict
+from cameleon.utils.parser import str2bool, str2int, str2list, str2dict
 from cameleon.bin.train import create_optional_args, train
 
-# Set logging level
-logging.basicConfig(level=logging.INFO,
-                    format='%(message)s')
 
 #################################################################################
 #   Function-Class Declaration
@@ -70,6 +67,7 @@ def _run_train_subexperiment(args,parser):
     :args: Argparse.Args: User-defined arguments
 
     """
+
     train(args,
           parser = parser)
 
@@ -82,6 +80,10 @@ def run_train_experiment(master_args,parser):
 
     # # Start by initializing Ray
     # init_ray = True
+
+    # Set logging level
+    logging.basicConfig(level=master_args.log_level,
+                        format='%(message)s')
 
     sync_dirs = []
     orig_outdir = master_args.outdir

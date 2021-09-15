@@ -12,7 +12,7 @@
 #######################################################################
 
 ROLLOUT_PATHS="""
-rollouts/APPO_torch_Cameleon-Canniballs-Easy-Corner-Disruption-12x12-v0_ep1000_ts0_rs42_w10_2021.09.02
+rollouts/APPO_torch_Cameleon-Canniballs-Easy-Corner-Disruption-12x12-v0_ep10_ts0_rs42_w10_2021.09.07
 """
 
 OUTPUT_DIR="data/interestingness/"
@@ -23,6 +23,8 @@ ANALYSIS_CONFIG="{}"
 ANALYSES="value"
 IMG_FORMAT="pdf"
 CLEAR="false"
+PLOT="false"
+LOG_LEVEL="info"
 
 
 # Need to remove whitespaces
@@ -47,4 +49,6 @@ python -m cameleon.bin.experiments.analyze_interestingness_rollouts \
   --action-factors=$ACTION_FACTORS \
   --analysis-config=$ANALYSIS_CONFIG \
   --img-format=$IMG_FORMAT \
-  --clear=$CLEAR
+  --clear=$CLEAR \
+  --plot=$PLOT \
+  --log-level=$LOG_LEVEL

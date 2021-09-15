@@ -1,0 +1,11 @@
+sriProjects:
+        - 'P25677'
+sriContacts:
+        - 'pedro.sequeira@sri.com'
+        - 'melinda.gervasio@sri.com'
+
+
+description: 'eXplainable Deep Reinforcement Learning (xdrl) framework based on the concept of Interestingness Elements'
+
+sriOrgs:
+        - '486'

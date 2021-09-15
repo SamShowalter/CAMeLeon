@@ -20,7 +20,7 @@ from gym_minigrid.wrappers import *
 from gym_minigrid.window import Window
 
 import cameleon.envs
-from cameleon.utils.env import str2bool
+from cameleon.utils.parser import str2bool
 
 #######################################################################
 # Helper functions

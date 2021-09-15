@@ -24,14 +24,12 @@ sys.path.append("../interestingness-xdrl/")
 from interestingness_xdrl.analysis.config import AnalysisConfiguration
 from interestingness_xdrl.analysis.full import FullAnalysis
 
-from cameleon.utils.env import str2framework, str2list, str2bool,str2dict, render_encoded_env
+from cameleon.utils.parser import str2framework, str2list, str2bool,str2dict,str2log_level
+from cameleon.utils.env import render_encoded_env
 from cameleon.utils.general import _load_metadata, _save_metadata
 from cameleon.interestingness.agent import CameleonInterestingnessAgent
 from cameleon.interestingness.environment import CameleonInterestingnessEnvironment
 
-# Set logging level
-logging.basicConfig(level=logging.INFO,
-                    format='%(message)s')
 
 #################################################################################
 #   User defined
@@ -50,13 +48,11 @@ def create_parser(parser_creator=None):
 
     return create_optional_args(parser)
 
-
-
 def create_optional_args(parser):
     """ Add optional arguments to argparse
 
     :parser: Argparse.Args: User-defined arguments
-    :returns: TODO
+    :returns: Argparse.parser: Argument parser for interestingness (optional args)
 
     """
     # Optional arguments
@@ -66,7 +62,9 @@ def create_optional_args(parser):
     parser.add_argument('--analysis-config', default = None, type=str2dict, help='Interesting analysis JSON-style config (python Dictionary)')
     parser.add_argument('--analyses', default = 'all', type=str2list, help='Comma-separated string of interestingness analyses to run. You can also specify "all" to run all of them.')
     parser.add_argument('--img-format', default = 'pdf', help='Format of images to be saved during analysis.')
+    parser.add_argument('--plot', default = False, type=str2bool, help='Whether or not to plot items')
     parser.add_argument('--clear', default = False, help='Whether to clear output directories before generating results.')
+    parser.add_argument('--log-level', default = True, type=str2log_level, help = "Get logging level from input args: 'info' | 'warn','warning' | 'error' | 'critical' ")
 
     return parser
 
@@ -101,6 +99,10 @@ def analyze_interestingness(args,parser = None):
 
     """
 
+    # Set logging level
+    logging.basicConfig(level=args.log_level,
+                        format='%(message)s')
+
     # Get metadata and update argument parser
     metadata = _load_metadata(args.rollouts_path)
     _get_args_from_metadata(args,metadata)
@@ -118,6 +120,8 @@ def analyze_interestingness(args,parser = None):
     logging.info("Getting agent interaction data")
     interaction_data = agent.get_interaction_datapoints()
 
+    print(len(interaction_data))
+
     # load analysis config
     config = None
     if (args.analysis_config) and (not os.path.isfile(args.analysis_config)):
@@ -131,6 +135,7 @@ def analyze_interestingness(args,parser = None):
 
     # creates full analysis with all analyses
     config.metadata = metadata; config.num_episodes = agent.num_episodes
+    config.plot = args.plot
     analysis = FullAnalysis(interaction_data, config, analyses = args.analyses,img_fmt = args.img_format)
     logging.info('{} total analyses to be performed...'.format(len(analysis)))
 

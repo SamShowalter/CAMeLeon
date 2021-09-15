@@ -13,12 +13,13 @@
 # Set variable names
 #######################################################################
 
-ENV_NAME="Cameleon-Canniballs-Hard-12x12-v0"
+ENV_NAME="Cameleon-Canniballs-Easy-Corner-Disruption-12x12-v0"
 NUM_ENC_FRAMES=5000
 NUM_VIZ_FRAMES=100
 NUM_RESETS=500
 WRAPPERS="canniballs_one_hot,encoding_only"
 VISUAL="false"
+LOG_LEVEL="info"
 
 #######################################################################
 # Run the script for training
@@ -36,4 +37,5 @@ python -m cameleon.bin.benchmark \
   --num-viz-frames=$NUM_VIZ_FRAMES \
   --num-resets=$NUM_RESETS \
   --wrappers=$WRAPPERS \
-  --visual=$VISUAL
+  --visual=$VISUAL \
+  --log-level=$LOG_LEVEL

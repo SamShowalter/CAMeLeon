@@ -28,6 +28,7 @@ class PPOExtractor(BaseRLlibPolicyExtractor):
     """Docstring for PPOExtractor. """
 
     def __init__(self,
+                 to_collect,
                  model,
                  episode,
                  worker,
@@ -36,6 +37,7 @@ class PPOExtractor(BaseRLlibPolicyExtractor):
                  episode_start):
 
         BaseRLlibPolicyExtractor.__init__(self,
+                                          to_collect,
                                           model,
                                           episode,
                                           worker,

@@ -28,6 +28,7 @@ class IMPALAExtractor(BaseRLlibPolicyExtractor):
     """Docstring for IMPALAExtractor. """
 
     def __init__(self,
+                 to_collect,
                  model,
                  episode,
                  worker,
@@ -36,6 +37,7 @@ class IMPALAExtractor(BaseRLlibPolicyExtractor):
                  episode_start):
 
         BaseRLlibPolicyExtractor.__init__(self,
+                                          to_collect,
                                           model,
                                           episode,
                                           worker,

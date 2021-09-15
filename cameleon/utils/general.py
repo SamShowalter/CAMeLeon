@@ -13,8 +13,22 @@
 
 import pickle as pkl
 import hickle as hkl
+import logging
 import json
 from operator import add
+
+#######################################################################
+# Important Global Variables
+#######################################################################
+
+LOG_LEVEL_DICT = {
+    'critical': logging.CRITICAL,
+    'error': logging.ERROR,
+    'warn': logging.WARNING,
+    'warning': logging.WARNING,
+    'info': logging.INFO,
+    'debug': logging.DEBUG
+}
 
 #################################################################################
 #   Function-Class Declaration
@@ -57,6 +71,19 @@ def _tup_add(t1, t2):
     :returns: Tuple sum
 
     """
+    return tuple(map(add,t1,t2))
+
+
+def _tup_subtract(t1, t2):
+    """Add two tuples
+
+    :t1: Tuple 1
+    :t2: Tuple 2
+
+    :returns: Tuple sum
+
+    """
+    t2 = (-t2[0],-t2[1])
     return tuple(map(add,t1,t2))
 
 def _tup_mult(t1, t2):

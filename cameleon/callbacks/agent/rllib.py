@@ -15,6 +15,7 @@
 from typing import Dict
 import argparse
 import sys
+import copy
 import numpy as np
 import os
 import hashlib
@@ -57,7 +58,8 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         self.model = args.model_name
         self.framework = config['framework']
         self.no_frame = args.no_frame
-        self.epochs_trained = self._extract_train_epochs()
+        # self.epochs_trained = self._extract_train_epochs()
+        self.epochs_trained =  args.epochs_trained if args.epochs_trained is not None else None
         self.use_hickle = args.use_hickle
         self.write_compressed = _write_hkl if self.use_hickle else _write_pkl
         self.read_compressed = _read_hkl if self.use_hickle else _write_pkl
@@ -71,25 +73,14 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         self.last_done = False
         self.episode = {}
 
-    def _extract_train_epochs(self):
-        """Extract training epochs from checkpoint
-        file, if possible.
-
-        """
-        if not self.args.checkpoint_path:
-            return 0
-        else:
-            try:
-                return int(self.args.checkpoint_path.split("-")[-1])
-            except:
-                print("ERROR extracting training epochs from checkpoint file."
-                      "Default filename has been altered. Defaulting to 0")
-                return 0
-
     def write_episode(self):
         """Write the episode
 
         """
+        #Only keep a truncated version of the hash - still appears sufficient
+        assert self.epochs_trained is not None,\
+            "ERROR: epochs_trained variable was not set properly"
+
         obs_hash = hashlib.shake_256(str(self.first_obs).encode()).hexdigest(6)
         self.first_obs = None
 
@@ -123,8 +114,8 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         self.episode_num += 1
 
         # Environment observation at start
-        env = base_env.get_unwrapped()[0]
-        obs = env.gen_obs()
+        self.env = base_env.get_unwrapped()[0]
+        obs = self.env.gen_obs()
 
         # Get the last observation
         self.first_obs = obs
@@ -132,7 +123,9 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         # Add information for the episode
         self.episode[self.step_num] = {
             "observation": obs,
+            "agent_pos": self.env.agent.cur_pos
         }
+
 
 
 
@@ -145,11 +138,12 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
             "after env reset!"
 
         pe = build_rllib_policy_extractor(
+                                  self.args.to_collect,
                                   self.model,
                                   episode,
                                   worker,
                                   framework = self.framework,
-                                  env = base_env,
+                                  env = self.env,
                                   episode_start = False)
 
         # Get reward for total reward and obs
@@ -158,6 +152,7 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         self.last_done = pe.get_last_done()
         info =pe.get_last_info()
         obs =self.episode[self.step_num]['observation']
+        agent_pos =self.episode[self.step_num]['agent_pos']
 
 
         if self.no_frame:
@@ -166,23 +161,31 @@ class RLlibIxdrlCallbacks(DefaultCallbacks):
         # Add information for the episode
         self.episode[self.step_num] = {
             "observation": obs,
+            "agent_pos": agent_pos,
             "action":pe.get_last_action(),
             "reward":reward,
             "done": self.last_done,
             "info":info,
-            "pi_info":pe.get_last_pi_info(),
-            "value_function":pe.get_value_function_estimate(),
-            "action_dist" : pe.get_action_dist(),
-            "q_values": pe.get_q_values(),
-            "action_logits":pe.get_action_logits()
         }
+
+        # Items to collect beyond standard info
+        for item in self.args.to_collect:
+            self.episode[self.step_num][item] = pe.call_method(item)
+
+        # "pi_info":pe.get_last_pi_info(),
+        # "value_function":pe.get_value_function_estimate(),
+        # "action_dist" : pe.get_action_dist(),
+        # "q_values": pe.get_q_values(),
+        # "action_logits":pe.get_action_logits()
 
         self.step_num += 1
 
         # Add information for the next episode observation
         self.episode[self.step_num] = {
             "observation": episode.last_observation_for(),
+            "agent_pos":self.env.agent.cur_pos
         }
+
 
     def on_episode_end(self, *, worker: RolloutWorker, base_env: BaseEnv,
                        policies: Dict[str, Policy], episode: MultiAgentEpisode,

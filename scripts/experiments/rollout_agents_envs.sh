@@ -42,6 +42,7 @@ IMAGO_FEATURES="observation,action_dist,action_logits,value_function"
 BUNDLE_ONLY="false"
 BUNDLE_ONLY_DIR=""
 SYNC_BUNDLES="true"
+LOG_LEVEL="info"
 
 # Rollout process can pick up trained config if a checkpoint is given
 # otherwise, specify information here
@@ -81,4 +82,5 @@ python -m cameleon.bin.experiments.rollout_agents_envs \
   --bundle-only=$BUNDLE_ONLY \
   --bundle-only-dir=$BUNDLE_ONLY_DIR \
   --sync-bundles=$SYNC_BUNDLES \
-  # --config=$CONFIG 
+  --log-level=$LOG_LEVEL \
+  --config=$CONFIG 

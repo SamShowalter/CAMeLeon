@@ -15,6 +15,7 @@
 import os
 import json
 import sys
+import traceback
 import logging
 from tqdm import tqdm, trange
 import argparse
@@ -36,14 +37,12 @@ from gym import envs
 from ray.tune.registry import register_env
 from ray import tune
 from cameleon.callbacks.rllib.tune_progress import CameleonRLlibTuneReporter
-from cameleon.utils.env import str2bool, str2dict, dict2str, str2wrapper,str2model, wrap_env,\
-    load_env, update_config, cameleon_logger_creator, str2framework, str2int, str2str
+from cameleon.utils.env import wrap_env,load_env, cameleon_logger_creator
+from cameleon.utils.parser import str2bool, str2dict, dict2str, str2wrapper,str2model,\
+    update_config, str2framework, str2int, str2str, str2log_level
 from cameleon.utils.messages import CameleonEmailBot
 from cameleon.utils.general import _write_pkl, _save_metadata
 
-# Set logging level
-logging.basicConfig(level=logging.INFO,
-                    format='%(message)s')
 
 #####################################################################################
 # Argparse formation
@@ -86,7 +85,7 @@ def create_optional_args(parser):
     parser.add_argument('--config',default = None,type = str2dict,help = 'JSON string configuration for RLlib training')
     parser.add_argument('--checkpoint-path', default = None, help = "Model directory, if a pretrained system exists already")
     parser.add_argument('--framework', default = "tf2",type=str2framework, help = "Deep learning framework to use on backend. Important that this is one of ['tf2','torch']")
-    parser.add_argument('--verbose', default = True, type=str2bool, help = "Determine if output should be verbose")
+    parser.add_argument('--log-level', default = "info", type=str2log_level, help = "Get logging level from input args: 'info' | 'warn','warning' | 'error' | 'critical' ")
     parser.add_argument('--email-updates', default = True, type=str2bool, help = "Determine if email updates should be sent")
     parser.add_argument('--email-server', default = 'smtp.mail.yahoo.com', help = "Email server to utilize")
     parser.add_argument('--email-sender', default = None,type=str2str, help = "Sender email to utilize (type should match email-server)")
@@ -199,7 +198,7 @@ def train_agent_tune(agent,
         #Checkpoint frequency
         checkpoint_freq=args.checkpoint_epochs,
 
-        # Set verbosity, 1 by default
+        # Set verbosity, needs to be 1 for messages
         verbose = 1,
 
         # Restore directory if needed
@@ -257,7 +256,7 @@ def train_agent_standalone(agent,
             chkpt_file = agent.save(args.outdir)
 
         #Print if needed
-        if args.verbose and (args.epochs_total > 0):
+        if (args.epochs_total > 0):
             result['checkpoint_file'] = chkpt_file
             make_progress_update(args,
                                  result)
@@ -274,8 +273,11 @@ def train_agent(agent,
                 args,
                 config,
                 tune = False):
-    """TODO: Docstring for train_agent.
-    :returns: TODO
+    """Agent training orchestrator
+
+    :args: Argparse.Args: User-defined arguments
+    :config: Dict: Configuration for Rllib
+    :tune: bool: Boolean on whether or not to use tune
 
     """
 
@@ -284,17 +286,26 @@ def train_agent(agent,
     metadata = {"train":vars(args)}
     _save_metadata(metadata, args.outdir)
 
-    if tune:
-        train_agent_tune(agent,
-                         args,
-                         config)
-    else:
-        assert args.framework in ['tf','torch','tf2'],\
-            "ERROR: Framework must be tf, torch or tf2"
+    try:
+        args.failure_message = None
+        if tune:
+            train_agent_tune(agent,
+                            args,
+                            config)
+        else:
+            assert args.framework in ['tf','torch','tf2'],\
+                "ERROR: Framework must be tf, torch or tf2"
 
-        train_agent_standalone(agent,
-                               args,
-                               config)
+            train_agent_standalone(agent,
+                                args,
+                                config)
+    except Exception as e:
+        if args.email_updates:
+            args.failure_message = str(e)
+            args.failure_stacktrace = traceback.format_exc()
+            args.execution_type = "training"
+            args.mail_bot.send_email("failure",args)
+        logging.info("Execution has failed. Terminating")
 
     # Save metadata after training
     args.config = config
@@ -305,10 +316,10 @@ def make_progress_update(
                          args,
                          result):
 
-    """TODO: Docstring for make_progress_update.
+    """Make progress update for training output
 
-    :result: TODO
-    :returns: TODO
+    :args: Argparse.Args: User-defined arguments
+    :result: Dict: Training output artifact (per iteration)
 
     """
     # Get total time
@@ -378,10 +389,14 @@ def train(args,parser = None):
     :args: Argparse.args: User-defined arguments
 
     """
-    pass
+
+    # Set logging level
+    logging.basicConfig(level= args.log_level,
+                        format='%(message)s')
+
     # Initialize mail bot
     if args.email_updates:
-        mail_bot = CameleonEmailBot(email_sender = args.email_sender,
+        args.mail_bot = CameleonEmailBot(email_sender = args.email_sender,
                                     email_receiver = args.email_receiver,
                                     email_server = args.email_server)
 
@@ -412,7 +427,6 @@ def train(args,parser = None):
     #Update config if one was passed
     if args.config:
         config = update_config(config, args.config)
-
 
     # Update outdir
     args.outdir_root = args.outdir
@@ -456,9 +470,8 @@ def train(args,parser = None):
     ray.shutdown()
 
     # Send email update, if necessary
-    if args.email_updates:
-        mail_bot.send_email("train_finished",
-                            args)
+    if args.email_updates and not args.failure_message:
+        args.mail_bot.send_email("train_finished", args)
 
 #######################################################################
 # Main method
@@ -468,9 +481,6 @@ def main():
     """Main method for argparse and rllib training
 
     """
-
-    # REMOVE THIS LATER
-    # time.sleep(3600*11)
 
     #Parse all arguments
     parser = create_parser()

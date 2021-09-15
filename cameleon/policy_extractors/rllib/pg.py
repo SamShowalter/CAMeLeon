@@ -29,6 +29,7 @@ class PGExtractor(BaseRLlibPolicyExtractor):
     """Docstring for PGExtractor. """
 
     def __init__(self,
+                 to_collect,
                  model,
                  episode,
                  worker,
@@ -37,6 +38,7 @@ class PGExtractor(BaseRLlibPolicyExtractor):
                  episode_start):
 
         BaseRLlibPolicyExtractor.__init__(self,
+                                          to_collect,
                                           model,
                                           episode,
                                           worker,

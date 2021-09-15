@@ -1,17 +1,12 @@
 import gzip
 import logging
-import os
-import csv
 import pickle
-import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import multiprocessing as mp
 from abc import abstractmethod, ABC
 from collections import OrderedDict
-from collections.abc import Iterable
 from interestingness_xdrl import InteractionDataPoint
 from interestingness_xdrl.analysis.config import AnalysisConfiguration
 from interestingness_xdrl.util.plot import format_and_save_plot, distinct_colors, TITLE_FONT_SIZE
@@ -25,9 +20,8 @@ MAX_ELEM_COLOR = 'tab:red'
 MIN_ELEM_COLOR = 'tab:green'
 MARKER_SIZE = 7
 
-EPISODE_STR = 'episode'
-TIME_STEP_STR = 'timestep'
-CHECKPOINT_STR = 'model_checkpoint'
+EPISODE_STR = 'Episode'
+TIME_STEP_STR = 'Timestep'
 
 
 class AnalysisBase(ABC):
@@ -39,7 +33,7 @@ class AnalysisBase(ABC):
     a specific simulation timestep, relevant according to different criteria.
     """
 
-    def __init__(self, data, analysis_config, img_fmt,tag=None):
+    def __init__(self, data, analysis_config, img_fmt):
         """
         Creates a new analysis.
         :param list[InteractionDataPoint] data: the interaction data collected to be analyzed.
@@ -49,7 +43,6 @@ class AnalysisBase(ABC):
         self.data = data
         self.config = analysis_config
         self.img_fmt = img_fmt
-        self.tag = tag
 
     @abstractmethod
     def analyze(self, output_dir):
@@ -85,7 +78,7 @@ class AnalysisBase(ABC):
         """
         pass
 
-    def save(self, file_path, save_data = False):
+    def save(self, file_path):
         """
         Saves a Gzipped binary file representing this object.
         :param str file_path: the path to the file in which to save this analysis.
@@ -93,8 +86,7 @@ class AnalysisBase(ABC):
         """
         # avoids saving interaction data, saves only analysis data
         data = self.data
-        if not save_data:
-            self.data = None
+        self.data = None
 
         with gzip.open(file_path, 'wb') as file:
             pickle.dump(self, file, protocol=pickle.HIGHEST_PROTOCOL)
@@ -111,26 +103,6 @@ class AnalysisBase(ABC):
         """
         with gzip.open(file_path, 'rb') as file:
             return pickle.load(file)
-
-    def _group_data_by_episode(self,data,outdir = None, make_dirs = False):
-        """Flatten episode interaction data for holistic analysis
-
-        :returns: Dict[InteractionDataPoint]: Dict of episode data, ordered
-
-        """
-        if make_dirs:
-            assert outdir,"ERROR: Make dirs specified but not outdir provided"
-        grouped_data = {}
-        for datapoint in data:
-            if datapoint.rollout_name not in grouped_data:
-                grouped_data[datapoint.rollout_name] = {}
-                path = os.path.join(outdir,datapoint.rollout_tag)
-                if not os.path.exists(path):
-                    os.makedirs(path)
-            grouped_data[datapoint.rollout_name][datapoint.rollout_timestep] = datapoint
-
-        return grouped_data
-
 
     def _get_mp_pool(self):
         """
@@ -176,18 +148,16 @@ class AnalysisBase(ABC):
         ax.set_xlim(0, len(self.data))
         format_and_save_plot(ax, title, output_img, 'Timesteps', y_label)
 
-    def _plot_elements_sp(self, data, high_limit, low_limit, outdir, img_name,
-                          high_label, low_label, title, y_label,subtitles = None, eps_per_plot=10):
+    def _plot_elements_sp(self, data, high_limit, low_limit, output_img,
+                          high_label, low_label, title, y_label, eps_per_plot=10):
 
         # split data into episodes
         ep_breaks = np.where([datapoint.new_episode for datapoint in self.data])[0].tolist()
         ep_breaks.remove(0)
         eps_data = np.split(data, ep_breaks)
-        subtitle_data = np.split(subtitles, ep_breaks)
 
         # create subplots
         plot_ep_splits = np.arange(0, len(eps_data), eps_per_plot)
-        plot_num = 0
         for ep_idx in plot_ep_splits:
             # creates figure and subplots
             plot_eps_data = eps_data[ep_idx:min(ep_idx + eps_per_plot, len(eps_data))]
@@ -197,14 +167,9 @@ class AnalysisBase(ABC):
                                     figsize=(len(plot_eps_data) * TIME_FIG_WIDTH / 10, TIME_FIG_HEIGHT),
                                     gridspec_kw={'width_ratios': width_ratios})
 
-            # Prevents issues with extra plotting
-            if not isinstance(axs,Iterable):
-                continue
-
             for ep, ax in enumerate(axs):
                 # plots data
                 ep_data = plot_eps_data[ep]
-                subtitle = " ".join(subtitle_data[ep][0].split("_")[:2])
                 ax.plot(ep_data, label=y_label)
 
                 # plots thresholds
@@ -224,9 +189,8 @@ class AnalysisBase(ABC):
 
                 ax.set_xlim(0, len(ep_data))
                 ax.yaxis.grid(True, which='both', linestyle='--', color='lightgrey')
-                ax.set_title(f'{subtitle}',fontsize = 8,wrap = True)
 
-            fig.suptitle(f'{title} Across {len(axs)} Episodes\n', fontweight='bold', fontsize=TITLE_FONT_SIZE)
+            fig.suptitle(f'{title} Across {eps_per_plot} Episodes', fontweight='bold', fontsize=TITLE_FONT_SIZE)
             fig.subplots_adjust(wspace=1 / len(plot_eps_data), hspace=0)
             axs[0].set_ylabel(y_label, fontweight='bold')
 
@@ -235,87 +199,12 @@ class AnalysisBase(ABC):
             leg.get_frame().set_edgecolor('black')
             leg.get_frame().set_linewidth(0.8)
 
-            output_img = os.path.join(outdir, "{}_eps{}-{}"\
-                                      .format(img_name,
-                                              plot_num*eps_per_plot,
-                                              plot_num*eps_per_plot + len(axs)))
-            plt.tight_layout()
-            plt.savefig(output_img, pad_inches=0,bbox_inches='tight' )
+            plt.savefig(output_img, pad_inches=0, bbox_inches='tight')
             plt.close()
-            plot_num += 1
 
         #
         # ax.set_xlim(0, len(self.data))
         # format_and_save_plot(ax, title, output_img, 'Timesteps', y_label)
-
-    def _plot_elements_separate(self, dimension, high_limit, low_limit, outdir,
-                          img_name, high_label, low_label, title, y_label):
-
-        # split data into episodes
-        ep_breaks = np.where([datapoint.new_episode for datapoint in self.data])[0].tolist()
-        ep_breaks.remove(0)
-        eps_data = np.split(self.data, ep_breaks)
-
-        # create subplots
-        for ep_idx in range(len(eps_data)):
-
-            # plots data
-            ep_data = [d.interestingness.analysis[self.tag][dimension] for d in eps_data[ep_idx]]
-            plot_tag = eps_data[ep_idx][0].rollout_tag
-            plot_header = eps_data[ep_idx][0].rollout_name
-
-            fig_sep, ax_sep = plt.subplots()
-            plt.plot(ep_data, label=y_label)
-
-            # plots thresholds
-            if not np.isnan(high_limit):
-                plt.axhline(y=high_limit, c=MAX_ELEM_COLOR, ls='--')
-            if not np.isnan(low_limit):
-                plt.axhline(y=low_limit, c=MIN_ELEM_COLOR, ls='--')
-            plt.axhline(y=np.mean(ep_data), c='tab:blue', ls='--')
-
-            # plot outliers
-            highs = np.array([[t, ep_data[t]] for t in range(len(ep_data)) if ep_data[t] >= high_limit])
-            if len(highs.shape) == 2:
-                plt.scatter(highs[:, 0], highs[:, 1], marker='o', s=MARKER_SIZE, c=MAX_ELEM_COLOR, zorder=100)
-            lows = np.array([[t, ep_data[t]] for t in range(len(ep_data)) if ep_data[t] <= low_limit])
-            if len(lows.shape) == 2:
-                plt.scatter(lows[:, 0], lows[:, 1], marker='o', s=MARKER_SIZE, c=MIN_ELEM_COLOR, zorder=100)
-
-            plt.xlim(0, len(ep_data))
-            ax_sep.yaxis.grid(True, which='both', linestyle='--', color='lightgrey')
-            plt.title(f'{plot_header} {title}', fontweight='bold', fontsize=TITLE_FONT_SIZE)
-            plt.ylabel(y_label, fontweight='bold')
-            box = ax_sep.get_position()
-            ax_sep.set_position([box.x0, box.y0 + box.height * 0.1,
-                            box.width, box.height * 0.9])
-            ax_sep.legend(labels=[y_label, high_label, low_label, 'Overall mean'],loc = 'upper center', fontsize = 10,
-                            bbox_to_anchor=(0.5, -0.03), ncol = 2, fancybox=True, borderaxespad=2)
-
-            output_img = os.path.join(outdir, '{}/{}_{}.{}'.format(plot_tag,
-                                                                    plot_header,
-                                                                    img_name,
-                                                                    self.img_fmt))
-            plt.savefig(output_img)
-            plt.close()
-
-
-        #
-        # ax.set_xlim(0, len(self.data))
-        # format_and_save_plot(ax, title, output_img, 'Timesteps', y_label)
-
-    def _write_tuple_list_csv(self, data,col_names, path):
-        """Write list of tuples to csv
-
-        :data: List[tuple]: Dataset
-        :col_names: List:   Names of columns, should be same length as tuples
-        :path: str:         Output filepath
-
-        """
-        with open(f"{path}.csv",'w') as out:
-            csv_out=csv.writer(out)
-            csv_out.writerow(col_names)
-            csv_out.writerows(data)
 
     def _plot_action_factor_divs(self, divs, output_img, title, y_label):
 
@@ -327,30 +216,10 @@ class AnalysisBase(ABC):
         ax.bar(np.arange(num_factors), divs, color=colors, edgecolor='black', linewidth=0.7, zorder=100)
         plt.xticks(np.arange(num_factors), self.data[0].action_factors, rotation=45, horizontalalignment='right')
 
-        format_and_save_plot(ax, f"{title}.csv", output_img, '', y_label, False)
-        plt.close()
-
-
-    def _plot_timestep_action_factor_divs(self, data,dimension,outdir,name, title, y_label):
-
-        plt.figure()
-        ax = plt.gca()
-        divs = data.interestingness.analysis[self.tag][dimension]
-        output_img = '{}/{}/{}_ts{}_{}.{}'.format(outdir,data.rollout_name,
-                                                    data.rollout_name,
-                                                    name,
-                                                    str(data.rollout_timestep).rjust(3,"0"),
-                                                    self.img_fmt)
-
-        num_factors = len(divs)
-        colors = distinct_colors(num_factors)
-        ax.bar(np.arange(num_factors), divs, color=colors, edgecolor='black', linewidth=0.7, zorder=100)
-        plt.xticks(np.arange(num_factors), data.action_factors, rotation=45, horizontalalignment='right')
-
         format_and_save_plot(ax, title, output_img, '', y_label, False)
         plt.close()
 
-    def _save_time_dataset_from_list_csv(self, element_data, dimension, file_name):
+    def _save_time_dataset_csv(self, element_data, dimension, file_name):
         ep = -1
         ep_t = 0
         data = OrderedDict({EPISODE_STR: [], TIME_STEP_STR: [], dimension: []})
@@ -364,75 +233,5 @@ class AnalysisBase(ABC):
             ep_t += 1
 
         df = pd.DataFrame.from_dict(data)
-        df.to_csv(f"{file_name}.csv", index=False)
-        logging.info(f'Saved CSV file with data for dimensions "{dimension}" at {file_name}.')
-
-    def _save_time_dataset_csv(self,rollout_data, dimensions, file_name, default = None):
-        if not isinstance(dimensions,list):
-            dimensions = list(dimensions)
-        data = OrderedDict({EPISODE_STR: [], TIME_STEP_STR: [],CHECKPOINT_STR:[]})
-        for dim in dimensions:
-            data[dim] = []
-
-        for d in rollout_data:
-                data[EPISODE_STR].append(d.rollout_name)
-                data[TIME_STEP_STR].append(d.rollout_timestep)
-                data[CHECKPOINT_STR].append(d.model_checkpoint)
-                for dim in dimensions:
-                    data[dim].append(d.interestingness.get_metric(self.tag,
-                                                                dim, default = default))
-        df = pd.DataFrame.from_dict(data)
-        df.to_csv(f"{file_name}.csv", index=False)
-        logging.info(f'Saved CSV file with data for dimensions {dimensions} at {file_name}.')
-
-#######################################################################
-# InterestingnessAnalysisStorageDP
-#######################################################################
-
-class InterestingnessAnalysisStorageDP(object):
-
-    """Stores interestingness artifacts for single timestep data point"""
-
-    def __init__(self, rollout_name, rollout_timestep, interaction_dp):
-        self.rollout_name = rollout_name
-        self.rollout_timestep = rollout_timestep
-        self.interaction_dp = interaction_dp
-        self.analysis = {}
-
-    def add_analysis(self, tag):
-        """Add analysis to interestingness
-        storage
-
-        :tag: Analysis tag
-
-        """
-        self.analysis[tag] = {}
-
-    def add_metric(self, tag,field,value):
-        """Add metric to interestingness
-
-        :tag: TODO
-        :field: TODO
-        :value: TODO
-
-        """
-        if tag not in self.analysis:
-            self.analysis[tag] = {}
-        self.analysis[tag][field] = value
-
-    def get_metric(self, tag,field, default = None):
-        """Get metric from interestingness
-
-        :tag: TODO
-        :field: TODO
-        :value: TODO
-
-        """
-        if default is None:
-            assert self.analysis[tag][field],\
-                "ERROR, field not found in InterestingnessAnalysisStorageDP under tag {} - {}".format(tag, field)
-        return self.analysis[tag].get(field, default)
-
-
-
-
+        df.to_csv(file_name, index=False)
+        logging.info(f'Saved CSV file with data for dimension "{dimension}" at {file_name}.')

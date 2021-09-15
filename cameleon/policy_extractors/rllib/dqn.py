@@ -33,6 +33,7 @@ class DQNExtractor(BaseRLlibPolicyExtractor):
     """
 
     def __init__(self,
+                 to_collect,
                  model,
                  episode,
                  worker,

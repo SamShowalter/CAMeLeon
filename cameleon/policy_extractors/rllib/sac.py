@@ -29,6 +29,7 @@ class SACExtractor(BaseRLlibPolicyExtractor):
     """Docstring for SACExtractor. """
 
     def __init__(self,
+                 to_collect,
                  model,
                  episode,
                  worker,
@@ -37,6 +38,7 @@ class SACExtractor(BaseRLlibPolicyExtractor):
                  episode_start):
 
         BaseRLlibPolicyExtractor.__init__(self,
+                                          to_collect,
                                           model,
                                           episode,
                                           worker,

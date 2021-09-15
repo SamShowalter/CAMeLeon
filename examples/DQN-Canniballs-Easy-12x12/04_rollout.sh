@@ -12,7 +12,7 @@
 #######################################################################
 
 # Environment, wrappers and model
-ENV_NAME="Cameleon-Canniballs-Easy-12x12-v0"
+ENV_NAME="Cameleon-Canniballs-Medium-12x12-v0"
 WRAPPERS="canniballs_one_hot,encoding_only"
 
 # Number of episodes and steps to roll out for
@@ -21,7 +21,7 @@ NUM_TIMESTEPS=0
 
 #Set the checkpoint dynamically for example
 DATE=`date "+%Y.%m.%d"`
-CHECKPOINT_PATH="models/DQN_torch_Cameleon-Canniballs-Easy-12x12-v0_$DATE/checkpoint_010000/checkpoint-10000"
+CHECKPOINT_PATH="models/DQN_torch_Cameleon-Canniballs-Easy-12x12-v0_rs42_w4_$DATE/checkpoint_010000/checkpoint-10000"
 OUTPUT_DIR="rollouts/"
 STORE_VIDEO="true"
 NO_RENDER="true"
@@ -34,7 +34,6 @@ NUM_GPUS=1
 # Hickle only useful when
 # compressing full image
 # frame information
-USE_HICKLE="false"
 NO_FRAME="true"
 CONFIG="{}"
 
@@ -65,5 +64,4 @@ python -m cameleon.bin.rollout \
   --num-gpus=$NUM_GPUS \
   --seed=$SEED \
   --no-frame=$NO_FRAME \
-  --use-hickle=$USE_HICKLE \
   --config=$CONFIG 

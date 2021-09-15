@@ -1,9 +1,6 @@
 import os
-import sys
 import logging
 import numpy as np
-from functools import partial
-from collections import OrderedDict
 from interestingness_xdrl import InteractionDataPoint
 from interestingness_xdrl.analysis import AnalysisBase, AnalysisConfiguration
 from interestingness_xdrl.util.math import get_distribution_evenness, save_list_csv
@@ -12,7 +9,15 @@ __author__ = 'Pedro Sequeira'
 __email__ = 'pedro.sequeira@sri.com'
 
 
-
+def _get_action_dist_evenness(action_probs):
+    """
+    Gets the evenness/true diversity associated with each given distribution over actions for each factor.
+    :param list[np.ndarray] action_probs: the probability distribution over actions for each action factor.
+    :rtype: list[float]
+    :return: a list with the evenness associated with each action-factor distribution.
+    """
+    # gets mean evenness (diversity) of distribution over all action factors
+    return [get_distribution_evenness(dist) for dist in action_probs]
 
 
 class ExecutionCertaintyAnalysis(AnalysisBase):
@@ -22,14 +27,14 @@ class ExecutionCertaintyAnalysis(AnalysisBase):
     selection at that timestep was.
     """
 
-    def __init__(self, data, analysis_config, img_fmt, tag = "execution_uncertainty"):
+    def __init__(self, data, analysis_config, img_fmt):
         """
         Creates a new analysis.
-        :param Dict[Episode_id][List[InteractionDataPoint]] data: the interaction data collected to be analyzed.
+        :param list[InteractionDataPoint] data: the interaction data collected to be analyzed.
         :param AnalysisConfiguration analysis_config: the analysis configuration containing the necessary parameters.
         :param str img_fmt: the format of the images to be saved.
         """
-        super().__init__(data, analysis_config, img_fmt, tag = tag)
+        super().__init__(data, analysis_config, img_fmt)
 
         # derived data
         self.all_execution_divs = np.zeros(len(data))  # timestep-indexed execution diversity for all actions
@@ -46,48 +51,30 @@ class ExecutionCertaintyAnalysis(AnalysisBase):
         pool = self._get_mp_pool()
 
         # gets action-factor exec diversities for each timestep
-        # data = self._flatten_episodes()
-        self.data = pool.map(self._get_action_dist_evenness,self.data)
-
-        self.all_execution_divs = np.array([d.interestingness.get_metric(self.tag,
-                                            'action_dist_evenness') for d in self.data])
+        data = [datapoint.action_probs for datapoint in self.data]
+        self.all_execution_divs = np.array(pool.map(_get_action_dist_evenness, data))
 
         # registers mean exec outliers
         self.mean_execution_divs = self.all_execution_divs.mean(axis=1)
         self.mean_execution_div = self.mean_execution_divs.mean(0)
         self.uncertain_executions = []
         self.certain_executions = []
-
         for t in range(1, len(self.data) - 1):
-
-            # tests for uncertain element (local maximum) - Provide full self.data point
+            # tests for uncertain element (local maximum)
             if self.mean_execution_divs[t] >= self.config.uncertain_exec_min_div and \
                     self.mean_execution_divs[t - 1] <= self.mean_execution_divs[t] > self.mean_execution_divs[t + 1]:
-                self.data[t].interestingness.add_metric(self.tag,
-                                               'uncertain_execution',
-                                               1)
-                self.uncertain_executions.append((t,self.data[t].rollout_name,self.data[t].rollout_timestep))
-
-            # tests for certain element (local minimum) - Provide full self.data point
+                self.uncertain_executions.append(t)
+            # tests for certain element (local minimum)
             elif self.mean_execution_divs[t] <= self.config.certain_exec_max_div and \
                     self.mean_execution_divs[t - 1] >= self.mean_execution_divs[t] < self.mean_execution_divs[t + 1]:
-                self.data[t].interestingness.add_metric(self.tag,
-                                               'certain_execution',
-                                               1)
-                self.certain_executions.append((t,self.data[t].rollout_name,self.data[t].rollout_timestep))
-
+                self.certain_executions.append(t)
 
         # sorts outliers
-        self.uncertain_executions.sort(key=lambda i: self.mean_execution_divs[i[0]], reverse=True)
-        self.certain_executions.sort(key=lambda i: self.mean_execution_divs[i[0]])
-        self.certain_execs_lkp = [d[0] for d in self.certain_executions]
-        self.uncertain_execs_lkp = [d[0] for d in self.uncertain_executions]
+        self.uncertain_executions.sort(key=lambda i: self.mean_execution_divs[i], reverse=True)
+        self.certain_executions.sort(key=lambda i: self.mean_execution_divs[i])
 
         # gets mean action factor execution diversity
         self.mean_action_factor_divs = self.all_execution_divs.mean(axis=0)
-
-        # Rebuild self.data dictionary
-        data_dict = self._group_data_by_episode(self.data, outdir = output_dir, make_dirs = True)
 
         # summary of elements
         logging.info('Finished')
@@ -101,80 +88,43 @@ class ExecutionCertaintyAnalysis(AnalysisBase):
         logging.info('Saving report in {}...'.format(output_dir))
 
         # saves analysis report
-        self.save(os.path.join(output_dir, f'{self.tag}.pkl.gz'))
+        self.save(os.path.join(output_dir, 'execution-certainty.pkl.gz'))
+        np.savetxt(os.path.join(output_dir, 'all-execution-divs.csv'), self.all_execution_divs, '%s', ',', comments='')
 
-        # Save time dataset
-        self._save_time_dataset_csv(self.data, ["action_dist_evenness","mean_action_execution_div","uncertain_execution","certain_execution"],
-                                    os.path.join(output_dir, 'mean-exec-div-time'),
-                                    default = 0)
-
-        subtitles = [d.rollout_name for d in self.data]
+        self._save_time_dataset_csv(self.mean_execution_divs, 'Execution Uncertainty',
+                                    os.path.join(output_dir, 'mean-exec-div-time.csv'))
         self._plot_elements_sp(self.mean_execution_divs,
                                self.config.uncertain_exec_min_div, self.config.certain_exec_max_div,
-                               output_dir,'mean-exec-div-time',
+                               os.path.join(output_dir, 'mean-exec-div-time.{}'.format(self.img_fmt)),
                                'Uncert. exec. threshold', 'Cert. exec. threshold',
-                               'Action Execution Uncertainty', 'Norm. True Diversity',
-                               subtitles = subtitles)
-
-        # Plot mean execution_div
-        self._plot_elements_separate("mean_action_execution_div",
-                               self.config.uncertain_exec_min_div, self.config.certain_exec_max_div,output_dir,
-                               'exec-div-time','Uncert. exec.', 'Cert. exec.',
                                'Action Execution Uncertainty', 'Norm. True Diversity')
 
+        save_list_csv(self.mean_action_factor_divs, os.path.join(output_dir, 'mean-action-divs.csv'))
         self._plot_action_factor_divs(
             self.mean_action_factor_divs, os.path.join(output_dir, 'mean-action-divs.{}'.format(self.img_fmt)),
             'Mean Action-Factor Execution Uncertainty', 'Norm. True Diversity')
 
-        self._write_tuple_list_csv(self.certain_executions,
-                                   ['list_index','rollout_name','rollout_timestep'],
-                                   os.path.join(output_dir, 'certain-executions'))
-        self._write_tuple_list_csv(self.uncertain_executions,
-                                   ['list_index','rollout_name','rollout_timestep'],
-                                   os.path.join(output_dir, 'uncertain-executions'))
+        save_list_csv(self.certain_executions, os.path.join(output_dir, 'certain-executions.csv'))
+        save_list_csv(self.uncertain_executions, os.path.join(output_dir, 'uncertain-executions.csv'))
 
-        if self.all_execution_divs.shape[1] > 1:
-            for d in self.data:
-                if d.interestingness.get_metric(self.tag,'certain_execution', default = 0):
-                    self._plot_timestep_action_factor_divs(d,'action_dist_evenness',
-                        output_dir,'cert-exec-action-divs',
-                        'Mean Action-Factor Execution Uncertainty', 'Norm. True Diversity')
-                elif d.interestingness.get_metric(self.tag,'uncertain_execution', default = 0):
-                    self._plot_timestep_action_factor_divs(d,'action_dist_evenness',
-                        output_dir,'uncert-exec-action-divs',
-                        'Mean Action-Factor Execution Uncertainty', 'Norm. True Diversity')
-
-        return self.data
-
+        for t in self.certain_executions:
+            self._plot_action_factor_divs(
+                self.all_execution_divs[t],
+                os.path.join(output_dir, 'cert-exec-{}-action-divs.{}'.format(t, self.img_fmt)),
+                'Mean Action-Factor Execution Uncertainty', 'Norm. True Diversity')
+        for t in self.uncertain_executions:
+            self._plot_action_factor_divs(
+                self.all_execution_divs[t],
+                os.path.join(output_dir, 'uncert-exec-{}-action-divs.{}'.format(t, self.img_fmt)),
+                'Mean Action-Factor Execution Uncertainty', 'Norm. True Diversity')
 
     def get_element_datapoint(self, datapoint):
-        mean_execution_div = datapoint.interestingness.get_metric(self.tag, "mean_action_execution_div")
+        mean_execution_div = np.mean(_get_action_dist_evenness(datapoint.action_probs))
         return 'cert-exec' if mean_execution_div <= self.config.certain_exec_max_div else \
                    'uncert-exec' if mean_execution_div >= self.config.uncertain_exec_min_div else '', \
                mean_execution_div
 
     def get_element_time(self, t):
-        return 'cert-exec' if t in self.certain_execs_lkp else \
-                   'uncert-exec' if t in self.uncertain_execs_lkp else '', \
+        return 'cert-exec' if t in self.certain_executions else \
+                   'uncert-exec' if t in self.uncertain_executions else '', \
                self.mean_execution_divs[t]
-
-    def _get_action_dist_evenness(self, datapoint):
-        """
-        Gets the evenness/true diversity associated with each given distribution over actions for each factor.
-        :param list[np.ndarray] action_probs: the probability distribution over actions for each action factor.
-        :rtype: list[float]
-        :return: a list with the evenness associated with each action-factor distribution.
-        """
-        # gets mean evenness (diversity) of distribution over all action factors
-        action_dist_evenness = [get_distribution_evenness(dist) for dist in datapoint.action_probs]
-        datapoint.interestingness.add_metric(self.tag,
-                                                          'action_dist_evenness',
-                                                          action_dist_evenness)
-
-        mean_action_execution_div = np.mean(action_dist_evenness)
-        datapoint.interestingness.add_metric(self.tag,
-                                                          'mean_action_execution_div',
-                                                          mean_action_execution_div)
-
-        return datapoint
-

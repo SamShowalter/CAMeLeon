@@ -1,0 +1,397 @@
+{
+  "py/object": "feature_extractor.config.FeatureExtractorConfig",
+  "sample_int": 1,
+  "friendly_id": 1,
+  "groups": {
+    "All": [
+      "Terran.CommandCenter",
+      "Terran.MissileTurret",
+      "Terran.Marine",
+      "Terran.SiegeTankSieged",
+      "Terran.Banshee",
+      "Terran.Hellbat",
+      "Terran.VikingFighter",
+      "Terran.Marauder"
+    ],
+    "Ground": [
+      "Terran.CommandCenter",
+      "Terran.MissileTurret",
+      "Terran.Marine",
+      "Terran.SiegeTankSieged",
+      "Terran.Hellbat",
+      "Terran.Marauder"
+    ],
+    "Air": [
+      "Terran.Banshee",
+      "Terran.VikingFighter"
+    ],
+    "Immobile": [
+      "Terran.CommandCenter",
+      "Terran.MissileTurret"
+    ],
+    "GroundAttacking": [
+      "Terran.Marine",
+      "Terran.SiegeTankSieged",
+      "Terran.Banshee",
+      "Terran.Hellbat",
+      "Terran.Marauder"
+    ],
+    "AirAttacking": [
+      "Terran.MissileTurret",
+      "Terran.Marine"
+    ]
+  },
+  "unit_costs": {
+    "Terran.CommandCenter": [
+      400,
+      0
+    ],
+    "Terran.MissileTurret": [
+      100,
+      0
+    ],
+    "Terran.Marine": [
+      50,
+      0
+    ],
+    "Terran.SiegeTankSieged": [
+      150,
+      125
+    ],
+    "Terran.Banshee": [
+      150,
+      100
+    ],
+    "Terran.Hellbat": [
+      100,
+      0
+    ],
+    "Terran.VikingFighter": [
+      150,
+      75
+    ],
+    "Terran.Marauder": [
+      100,
+      25
+    ]
+  },
+  "unit_group_friendly_filter": [
+    "Ground",
+    "Air",
+    "Immobile",
+    "GroundAttacking",
+    "AirAttacking"
+  ],
+  "unit_group_enemy_filter": [
+    "Ground",
+    "Air",
+    "Immobile",
+    "GroundAttacking",
+    "AirAttacking"
+  ],
+  "distance_friendly_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "distance_enemy_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "melee_range_ratio": 0.1,
+  "close_range_ratio": 0.2,
+  "far_range_ratio": 0.85,
+  "concentration_friendly_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "concentration_enemy_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "compact_ratio": 0.1,
+  "spread_ratio": 0.4,
+  "scattered_ratio": 0.85,
+  "force_factors": [
+    {
+      "py/object": "feature_extractor.config.ForceFactorConfig",
+      "factor": "total_cost",
+      "name": "Cost",
+      "op": "mean",
+      "friendly_filter": [
+        "All"
+      ],
+      "enemy_filter": [
+        "All"
+      ],
+      "levels": [
+        {
+          "name": "Undefined",
+          "value": 0
+        },
+        {
+          "name": "Cheap",
+          "value": 70
+        },
+        {
+          "name": "Medium",
+          "value": 190
+        },
+        {
+          "name": "Expensive",
+          "value": 275
+        }
+      ]
+    },
+    {
+      "py/object": "feature_extractor.config.ForceFactorConfig",
+      "factor": "is_on_screen",
+      "name": "Size",
+      "op": "sum",
+      "friendly_filter": [
+        "All",
+        "Ground",
+        "Air"
+      ],
+      "enemy_filter": [
+        "All",
+        "Ground",
+        "Air"
+      ],
+      "levels": [
+        {
+          "name": "Undefined",
+          "value": 0
+        },
+        {
+          "name": "Small",
+          "value": 5
+        },
+        {
+          "name": "Medium",
+          "value": 15
+        },
+        {
+          "name": "Large",
+          "value": 100
+        }
+      ]
+    },
+    {
+      "py/object": "feature_extractor.config.ForceFactorConfig",
+      "factor": "health_ratio",
+      "name": "Health",
+      "op": "mean",
+      "friendly_filter": [
+        "All",
+        "Ground",
+        "Air"
+      ],
+      "enemy_filter": [
+        "All",
+        "Ground",
+        "Air"
+      ],
+      "levels": [
+        {
+          "name": "Undefined",
+          "value": 0
+        },
+        {
+          "name": "Weak",
+          "value": 100
+        },
+        {
+          "name": "Medium",
+          "value": 175
+        },
+        {
+          "name": "Healthy",
+          "value": 255
+        }
+      ]
+    }
+  ],
+  "force_relative_factors": [
+    {
+      "py/object": "feature_extractor.config.ForceRelativeFactorConfig",
+      "factor": "total_cost",
+      "name": "Cost",
+      "friendly_filter": [
+        "All"
+      ],
+      "enemy_filter": [
+        "All"
+      ],
+      "ratio": 0.90,
+      "advantage": "advantage",
+      "disadvantage": "disadvantage",
+      "balanced": "balanced"
+    },
+    {
+      "py/object": "feature_extractor.config.ForceRelativeFactorConfig",
+      "factor": "is_on_screen",
+      "name": "Size",
+      "friendly_filter": [
+        "All",
+        "Ground",
+        "Air"
+      ],
+      "enemy_filter": [
+        "All",
+        "Ground",
+        "Air"
+      ],
+      "ratio": 0.75,
+      "advantage": "majority",
+      "disadvantage": "minority",
+      "balanced": "balanced"
+    }
+  ],
+  "under_attack_friendly_filter": [
+    "Ground",
+    "Air"
+  ],
+  "under_attack_enemy_filter": [
+    "Ground",
+    "Air"
+  ],
+  "elevation_friendly_filter": [
+    "Ground",
+    "Air"
+  ],
+  "elevation_enemy_filter": [
+    "Ground",
+    "Air"
+  ],
+  "low_elevation": 3,
+  "medium_elevation": 10,
+  "high_elevation": 20,
+  "movement_friendly_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "movement_enemy_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "velocity_threshold": 0.5,
+  "advance_angle_thresh": [
+    0,
+    1.15
+  ],
+  "retreat_angle_thresh": [
+    2.0,
+    3.15
+  ],
+  "between_friendly_filter": [
+    "All"
+  ],
+  "between_enemy_filter": [
+    "Immobile"
+  ],
+  "between_barrier_filter": [
+    "All"
+  ],
+  "between_units_ratio": 0.25,
+  "barrier_angle_threshold": 0.1,
+  "move_order_friendly_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "move_order_enemy_filter": [
+    "Ground",
+    "Air"
+  ],
+  "move_orders": [
+    10,
+    11,
+    13,
+    14,
+    545,
+    546,
+    547,
+    548
+  ],
+  "attack_order_friendly_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "attack_order_enemy_filter": [
+    "Ground",
+    "Air"
+  ],
+  "attack_orders": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    539,
+    540
+  ],
+  "repair_order_friendly_filter": [
+    "Ground",
+    "Air"
+  ],
+  "repair_order_enemy_filter": [
+    "Ground",
+    "Air"
+  ],
+  "repair_orders": [
+    324,
+    325,
+    326,
+    327,
+    328,
+    329,
+    330,
+    108,
+    109
+  ],
+  "no_op_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "attack_move_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "move_grid_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "target_type_friendly_filter": [
+    "All",
+    "Ground",
+    "Air"
+  ],
+  "target_type_enemy_filter": [
+    "Ground",
+    "Air",
+    "Immobile",
+    "AirAttacking",
+    "GroundAttacking",
+    "Terran.CommandCenter",
+    "Terran.MissileTurret",
+    "Terran.Marine",
+    "Terran.SiegeTankSieged",
+    "Terran.Banshee",
+    "Terran.Hellbat",
+    "Terran.VikingFighter",
+    "Terran.Marauder"
+  ]
+}

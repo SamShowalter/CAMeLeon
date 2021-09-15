@@ -3,10 +3,8 @@ a = """
 TODO:
 
     <--- High Priority --->
-    -
-
-
-
+    - Think of new / better disruptions
+    - Read and notes on ICML articles for OOD to help with imagination
 
     <--- Done --->
     X Create hash to easily look up rollouts
@@ -85,6 +83,17 @@ TODO:
     X Update cameleon to facilitate more intuitive naming for checkpoints from same model
     X Add content for AIC seminar for interestingness
     X Post new models to filex
+
+    -- Week of Sept 7 --
+    X Add disruptions to CAMeLeon README
+    X Update code to be more modular around disruptions
+    X Add way for mailbot to send error messages effectively and gracefully
+    X Change way log level is set
+    X Final pass-through on CAMeLeon code. Update any bad design patterns.
+    X Update README again, hopefully for the last time
+    X Update way environment ingests info about model
+    X Update examples code and finalize documentation
+
 
 
 
@@ -166,22 +175,22 @@ path1 = "data/interestingness/APPO_torch_Cameleon-Canniballs-Medium-12x12-v0/Cam
 # path2 = "data/interestingness/APPO_torch_Cameleon-Canniballs-Medium-12x12-v0/Cameleon-Canniballs-Hard-Corner-Disruption-12x12-v0_ep178_rs42_w1/1-interaction/value/value-time.csv"
 # path1 = "data/interestingness/APPO_torch_Cameleon-Canniballs-Medium-12x12-v0/Cameleon-Canniballs-Hard-Fake-Corner-Disruption-12x12-v0_ep168_rs42_w1/1-interaction/value/value-time.csv"
 
-df1 = pd.read_csv(path1)
-df2 = pd.read_csv(path2)
-df1['type'] = 'no_disruption'
-df2['type'] = 'disruption'
+# df1 = pd.read_csv(path1)
+# df2 = pd.read_csv(path2)
+# df1['type'] = 'no_disruption'
+# df2['type'] = 'disruption'
 
 # df3 = pd.read_csv(path3)
 # # df3 = pd.read_csv(path3)
 
 # # cnt_df = df[['timestep','model_checkpoint']].groupby(['timestep']).agg('count')
 # # plt.figure(figsize=(16,10))
-dfs = [df1,df2]
+# dfs = [df1,df2]
 
 
 # # for i in range(3):
 # #     dfs[i] = dfs[i][['model_checkpoint','episode','timestep']]
-df = pd.concat(dfs,axis =0)
+# df = pd.concat(dfs,axis =0)
 
 
 # # df['action_diff'] = df['action_max_min_diffs'].str.replace('[','').str.replace("]","").astype(float)
@@ -190,7 +199,7 @@ df = pd.concat(dfs,axis =0)
 # # print(df.reward)
 # # df['reward']= df.reward.apply(lambda x: x[-1]("n","-").astype(int))
 
-df = df[df.timestep < 51]
+# df = df[df.timestep < 51]
 # df.drop('timestep',inplace = True,axis = 1)
 # final_df = final_df[~final_df.model_checkpoint.isin([20,40,400,1400,600,800,1800,1600,1200,420,440,460,200,480])]
 # # print(df.model_checkpoint.drop_duplicates())
@@ -198,15 +207,15 @@ df = df[df.timestep < 51]
 # # cnt_df.to_csv('count_df.csv',index = False)
 # # final_df = final_df[~df.model_checkpoint.isin([12
 # palette = sns.color_palette("mako_r", len(final_df.model_checkpoint.drop_duplicates()))
-palette1 = sns.color_palette("mako_r", 2)
-palette2 = sns.color_palette("Accent", 2)
+# palette1 = sns.color_palette("mako_r", 2)
+# palette2 = sns.color_palette("Accent", 2)
 
 # # box_df = df[['reward','model_checkpoint','episode']].groupby("episode").agg({"reward":['sum']})
 # # box_df = df[['reward','model_checkpoint','episode']]
 # # print(box_df)
 # # sys.exit(1)
 # # sns.boxplot(data=box_df, x = 'model_checkpoint',y = 'reward')
-print(df.columns)
+# print(df.columns)
 
 # # Execution certainty
 # plot = sns.lineplot(data = df, x = "timestep", y="mean_action_execution_div",hue = "type",legend = "full",palette=palette)
@@ -215,11 +224,21 @@ print(df.columns)
 # plt.savefig("APPO_exec-cert_easy_disruption_chaser.png")
 
 
-# Value
-sns.lineplot(data = df, x = "timestep", y="value",hue = "type",legend = "full",palette=palette1)
-sns.lineplot(data = df, x = "timestep", y="actual_value_to_go",hue = "type",dashes = True, palette = palette2)
-plt.legend(bbox_to_anchor=(0.5, 1.10), ncol = 4, fancybox=True, loc = 'upper center')
-plt.tight_layout()
-plt.savefig("APPO_exec-value_easy_disruption_food_vtg.png")
+# # Value
+# sns.lineplot(data = df, x = "timestep", y="value",hue = "type",legend = "full",palette=palette1)
+# sns.lineplot(data = df, x = "timestep", y="actual_value_to_go",hue = "type",dashes = True, palette = palette2)
+# plt.legend(bbox_to_anchor=(0.5, 1.10), ncol = 4, fancybox=True, loc = 'upper center')
+# plt.tight_layout()
+# plt.savefig("APPO_exec-value_easy_disruption_food_vtg.png")
+
+#######################################################################
+# Random test
+#######################################################################
+
+import numpy as np
+
+a =[1,2,3,4]
+np.random.shuffle(a)
+print(a)
 
 

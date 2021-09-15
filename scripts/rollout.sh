@@ -14,10 +14,11 @@
 OUTPUT_DIR="rollouts/"
 STORE_VIDEO="true"
 # ENV_NAME="Cameleon-Canniballs-Hard-12x12-v0"
-ENV_NAME="Cameleon-Canniballs-Easy-Corner-Disruption-12x12-v0"
+ENV_NAME="Cameleon-Canniballs-Hard-12x12-v0"
+# ENV_NAME="Cameleon-Canniballs-Medium-NStep-Avoidance-12x12-v0"
 
 # Usually makes 5x what you put here, not sure why
-EPISODES=1000
+EPISODES=200
 TIMESTEPS=0
 
 CHECKPOINT_PATH="models/APPO_torch_Cameleon-Canniballs-Medium-12x12-v0_rs42_w14_2021.08.23/checkpoint_002020/checkpoint-2020"
@@ -28,12 +29,15 @@ NUM_GPUS=1
 SEED=42
 USE_HICKLE="false"
 NO_FRAME="true"
+# Items to be collected beyond obs, reward, action, done
+TO_COLLECT="action_dist,action_logits,value_function"
 STORE_IMAGO="false"
 IMAGO_DIR="data/imago/"
 IMAGO_FEATURES="observation,action_dist,action_logits,value_function"
 BUNDLE_ONLY="false"
 BUNDLE_ONLY_DIR=""
-SYNC_BUNDLES="true"
+SYNC_BUNDLES="false"
+LOG_LEVEL="info"
 
 # Rollout process can pick up trained config if a checkpoint is given
 # otherwise, specify information here
@@ -67,10 +71,12 @@ python -m cameleon.bin.rollout \
   --seed=$SEED \
   --no-frame=$NO_FRAME \
   --use-hickle=$USE_HICKLE \
+  --to-collect=$TO_COLLECT \
   --store-imago=$STORE_IMAGO \
   --imago-dir=$IMAGO_DIR \
   --imago-features=$IMAGO_FEATURES \
   --bundle-only=$BUNDLE_ONLY \
   --bundle-only-dir=$BUNDLE_ONLY_DIR \
   --sync-bundles=$SYNC_BUNDLES \
+  --log-level=$LOG_LEVEL \
   --config=$CONFIG 

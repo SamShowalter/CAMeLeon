@@ -21,7 +21,7 @@ from operator import add
 
 from cameleon.register import register
 from cameleon.grid import *
-from cameleon.utils.general import _tup_add, _tup_equal, _tup_mult
+from cameleon.utils.general import _tup_add, _tup_equal, _tup_mult, _tup_subtract
 
 #######################################################################
 # Base canniball
@@ -34,13 +34,13 @@ class BaseCanniball(Ball):
        live objects in environment
     """
 
-    def __init__(self,game,color = "blue"):
+    def __init__(self,game,color = "blue",score = 0):
         """Reference to game itself important to maintain state"""
 
         Ball.__init__(self,color)
         self.game = game
         self.alive = True
-        self.score = 0
+        self.score = score
 
         #Make sure all objects governed by same seed
         self.np_random = game.np_random if self.game else np.random
@@ -138,16 +138,11 @@ class BaseCanniball(Ball):
 
         # Check priorities first
         for p in priorities:
-            # print(agent_loc)
-            # print(p)
-            # print(self.is_valid(p,is_disruption = is_disruption))
-            # print(not self.close_to_agent(p,agent_loc))
             if (self.is_valid(p, is_disruption = is_disruption)
                 and (not agent_loc
                 or (agent_loc and not
                     self.close_to_agent(p, agent_loc, close = close)))):
                 self.new_pos = p
-                # print("Valid")
                 # print("----------")
                 return
 
@@ -203,10 +198,9 @@ class RandomWalker(BaseCanniball):
 
     """
 
-    def __init__(self,game,color = "green",
+    def __init__(self,game,color = "green",score =1,
                  stay_put_prob = 0.9):
-        BaseCanniball.__init__(self,game,color)
-        self.score = 1
+        BaseCanniball.__init__(self,game,color,score)
         self.opponent_type = 'random_walker'
         self.stay_put_prob = stay_put_prob
 
@@ -232,6 +226,103 @@ class RandomWalker(BaseCanniball):
                         size = (3,3),
                         reject_fn = None)
 
+#######################################################################
+# Benign follower - for disruptions
+#######################################################################
+
+
+class Follower(BaseCanniball):
+
+    """
+    Random walking ball opponent
+    - Score 1 greater than opponent always
+    - Mostly stands still (easy target)
+    - With random probability, walks around aimlessly
+
+    """
+
+    def __init__(self,game,color = "pink",score =1,
+                 change_relation_prob = 0.2):
+        BaseCanniball.__init__(self,game,color,score)
+        self.opponent_type = 'follower'
+        self.agent_relation = None
+        self.change_relation_prob = change_relation_prob
+
+
+    def move(self,
+             update_pos = None):
+        """Random walker chooses a random new available position
+
+        :update_pos: Potential update position, not used for this obj
+
+        """
+
+        if not self.agent_relation:
+            self.agent_relation = _tup_subtract(self.init_pos,
+                                                self.game.agent.init_pos)
+
+        agent_pos = self.game.agent.cur_pos
+        ax,ay = agent_pos[0],agent_pos[1]
+        pot_new_pos = _tup_add(agent_pos,
+                                self.agent_relation)
+        cant_move = ((pot_new_pos[0] < self.game.agent_range_squeeze) or
+                     (pot_new_pos[0] >= self.game.width - self.game.agent_range_squeeze) or
+                     (pot_new_pos[1] < self.game.agent_range_squeeze) or
+                     (pot_new_pos[1] >= self.game.height - self.game.agent_range_squeeze))
+
+        # The agent is at a range border and the open position is valid
+        must_move_list = [((ax == self.game.agent_range_squeeze)
+                      and (self.is_valid((ax-1,ay)))) ,
+                     ((ay == self.game.agent_range_squeeze)
+                      and (self.is_valid((ax,ay-1)))) ,
+                     ((ax == self.game.width - self.game.agent_range_squeeze-1)
+                      and (self.is_valid((ax+1,ay)))) ,
+                     ((ay == self.game.height - self.game.agent_range_squeeze -1)
+                      and (self.is_valid((ax,ay+1))))]
+
+        must_move = True if True in must_move_list else False
+
+        if cant_move:
+            # print("Can't move")
+            self.prev_pos = self.cur_pos
+            self.new_pos = pot_new_pos
+
+        elif must_move:
+            # print("Must move")
+            move_pos = [(ax-1,ay),(ax,ay-1),(ax+1,ay),(ax,ay+1)]
+            for i in range(len(must_move_list)):
+                if must_move_list[i]:
+                    self.prev_pos = self.cur_pos
+                    self.new_pos = move_pos[i]
+                    # print(self.prev_pos)
+                    # print(move_pos[i])
+                    return
+
+            assert False, "ERROR: No valid position found during must move"
+
+
+        elif ((self.game.np_random.rand() < self.change_relation_prob)
+            or (not self.is_valid(pot_new_pos))):
+            relations =[(1,0),(-1,0),(0,1),(0,-1)]
+            self.np_random.shuffle(relations)
+            for r in relations:
+                pos = _tup_add(agent_pos,r)
+                if self.is_valid(pos):
+                    # print("old rel {} - new rel {}".format(self.agent_relation,r))
+                    self.agent_relation = r
+                    self.prev_pos = self.cur_pos
+                    self.new_pos = _tup_add(agent_pos,
+                                            self.agent_relation)
+                    return
+
+            assert False, "ERROR: No valid position found during random explore"
+
+        else:
+
+            self.prev_pos = self.cur_pos
+            self.new_pos = pot_new_pos
+
+
 
 #######################################################################
 # Bouncer Canniball Class
@@ -249,11 +340,11 @@ class Bouncer(BaseCanniball):
     """
 
     def __init__(self,game,color  = "yellow",
+                 score = 2,
                  rand_move_prob=0.02,
                  stay_put_prob = 0.3):
 
-        BaseCanniball.__init__(self,game,color)
-        self.score = 2
+        BaseCanniball.__init__(self,game,color,score)
 
         # Can bounce diagonally, horizontally, or vertically
         # Movement sign flips when the agent finds itself colliding
@@ -335,8 +426,6 @@ class Bouncer(BaseCanniball):
                             size = (3,3),
                             reject_fn = None)
 
-
-
 #######################################################################
 # Chaser Canniball class
 #######################################################################
@@ -354,13 +443,14 @@ class Chaser(BaseCanniball):
 
     def __init__(self,
                  game,
+                 score = 3,
                  #Trigger range should be an odd number
                  #Represents the box in which the piece is centered
                  trigger_range = 7,
                  color = "red"):
 
         BaseCanniball.__init__(self,game,color)
-        self.score = 3
+        self.score = score
         self.opponent_type = 'chaser'
         self.triggered = False
         self.trigger_range = trigger_range
@@ -519,6 +609,7 @@ class CanniballAgent():
         self.init_pos = None
         self.cur_pos = None
         self.prev_pos = None
+        self.range_squeeze = game.agent_range_squeeze
         self.alive = True
 
     def find_pos(self,
@@ -533,8 +624,10 @@ class CanniballAgent():
 
 
         for i in range(max_tries):
-            self.init_pos = (self.game.np_random.randint(0,self.game.width),
-                            self.game.np_random.randint(0,self.game.height))
+            self.init_pos = (self.game.np_random.randint(self.range_squeeze,
+                                                         self.game.width - self.range_squeeze),
+                            self.game.np_random.randint(self.range_squeeze,
+                                                        self.game.height - self.range_squeeze))
 
             if not (self.game.grid.get(*self.init_pos)):
                 self.new_pos = self.init_pos
@@ -595,10 +688,212 @@ class CanniballAgent():
 
 
 #######################################################################
-# Disruption Events
+# Disruptions
 #######################################################################
 
-class CanniballsCornersDisruption(object):
+
+class CanniballsNstepAvoidanceDisruption(BaseDisruption):
+
+    """Adds a disruption to the game that is built
+    to elicit a specific reponse in the agent"""
+
+    def __init__(self,
+                 n,
+                 start_fn = lambda game: game.step_count >= 0,
+                 end_fn = lambda self: self.active_timesteps >= self.n-1,
+                 grid = Grid,
+                 num_objs = 3,
+                 squeeze = 0,
+                 obj_type = "follower"):
+
+
+        BaseDisruption.__init__(self,
+                               start_fn,
+                               end_fn,
+                               grid = Grid)
+        self.n = n
+        self.num_objs = num_objs
+        self.obj_type = obj_type
+        self.canniballs = []
+
+    def add_game(self, game):
+        """Add game to disruption
+
+        :game: Game for disruption
+
+        """
+        self.game = game
+        self._init_disruption(game.width, game.height)
+
+    def place_objs(self):
+        """
+
+        """
+        obj_dict = {"food": CanniballFood,
+                    "chaser":Chaser,
+                    "bouncer": Bouncer,
+                    "random_walker":RandomWalker,
+                    "follower": Follower}
+
+        assert self.obj_type in obj_dict,\
+            "ERROR: Object type {} not found in registry: {}"\
+            .format(self.obj_type,
+                    list(obj_dict.keys()))
+
+        obj = obj_dict[self.obj_type]
+
+        ax,ay = self.game.agent.cur_pos
+
+        self.positions = []
+        # dirs left, right, top, bottom
+        dir_dists = np.array([ax - 1,
+                               # 2 to resolve for 0 indexing
+                               self.game.width - 2 - ax,
+                               ay - 1,
+                               self.game.height - 2 - ay])
+
+        missing_dir = self.game.np_random.choice(
+                        np.argwhere(dir_dists >= 2).flatten())
+
+        # Dirs
+        self.positions = [(ax-1,ay),
+                        (ax+1,ay),
+                        (ax,ay-1),
+                        (ax,ay+1)]
+        del self.positions[missing_dir]
+
+        for i in range(self.num_objs):
+            pos = self.positions[i]
+            active_obj = obj(game=self.game,
+                             score=self.game.agent.score+1)
+
+            active_obj.find_pos(priorities = [pos],
+                    agent_loc = self.game.agent.cur_pos,
+                    is_disruption=True)
+            active_obj.init_pos = active_obj.new_pos
+            active_obj.cur_pos = active_obj.init_pos
+            self.canniballs.append(active_obj)
+
+            # Set the objects
+            self.grid.set(*active_obj.cur_pos,
+                        active_obj)
+
+
+    def _init_disruption(self,width,height):
+        """Initialize disruption
+
+        :width: int: Width of grid
+        :height: int: height of grid
+
+        """
+        # Generate the surrounding walls
+        self.canniballs = []
+        self.grid = self.grid(width,height)
+        self.grid.wall_rect(0, 0, width, height)
+        self.grid.agent = self.game.agent
+
+#######################################################################
+# Food Distance consumption disruption
+#######################################################################
+
+class CanniballsNstepConsumptionDisruption(BaseDisruption):
+
+    """Adds a disruption to the game that is built
+    to elicit a specific reponse in the agent"""
+
+    def __init__(self,
+                 start_fn = lambda game: game.step_count >= 0,
+                 end_fn = lambda self: self.active_timesteps >= self.max_steps,
+                 grid = Grid,
+                 num_objs = 3,
+                 slack_steps =0,
+                 squeeze = 0,
+                 obj_type = "food"):
+
+
+        BaseDisruption.__init__(self,
+                               start_fn,
+                               end_fn,
+                               grid = Grid)
+
+        self.num_objs = num_objs
+        self.slack_steps = slack_steps
+        self.max_steps = num_objs + slack_steps
+        self.obj_type = obj_type
+        self.canniballs = []
+
+    def add_game(self, game):
+        """Add game to disruption
+
+        :game: Game for disruption
+
+        """
+        self.game = game
+        self._init_disruption(game.width, game.height)
+
+    def place_objs(self):
+        """
+
+        """
+        obj_dict = {"food": CanniballFood,
+                    "chaser":Chaser,
+                    "bouncer": Bouncer,
+                    "random_walker":RandomWalker,
+                    "follower": Follower}
+
+        assert self.obj_type in obj_dict,\
+            "ERROR: Object type {} not found in registry: {}"\
+            .format(self.obj_type,
+                    list(obj_dict.keys()))
+
+        obj = obj_dict[self.obj_type]
+
+        # Start near agent
+        ax,ay = self.game.agent.cur_pos
+
+        # Dirs
+        for i in range(self.num_objs):
+
+            positions = [(ax-1,ay),
+                            (ax+1,ay),
+                            (ax,ay-1),
+                            (ax,ay+1)]
+
+            self.game.np_random.shuffle(positions)
+            active_obj = obj(game=self.game)
+
+            active_obj.find_pos(priorities = positions,
+                    agent_loc = self.game.agent.cur_pos)
+            active_obj.init_pos = active_obj.new_pos
+            active_obj.cur_pos = active_obj.init_pos
+            self.canniballs.append(active_obj)
+            ax,ay = active_obj.cur_pos[0], active_obj.cur_pos[1]
+
+            # Set the objects
+            self.grid.set(*active_obj.cur_pos,
+                        active_obj)
+
+
+    def _init_disruption(self,width,height):
+        """Initialize disruption
+
+        :width: int: Width of grid
+        :height: int: height of grid
+
+        """
+        # Generate the surrounding walls
+        self.canniballs = []
+        self.grid = self.grid(width,height)
+        self.grid.wall_rect(0, 0, width, height)
+        self.grid.agent = self.game.agent
+
+
+#######################################################################
+# Corners Disruption
+#######################################################################
+
+
+class CanniballsCornersDisruption(BaseDisruption):
 
     """Adds a disruption to the game that is built
     to elicit a specific reponse in the agent"""
@@ -610,13 +905,13 @@ class CanniballsCornersDisruption(object):
                  squeeze = 0,
                  obj_type = "food"):
 
-        self.start_fn = start_fn
-        self.end_fn = end_fn
+
+        BaseDisruption.__init__(self,
+                               start_fn,
+                               end_fn,
+                               grid = Grid)
         self.squeeze = squeeze
         self.obj_type = obj_type
-        self.active = False
-        self.active_timesteps = 0
-        self.grid = grid
         self.canniballs = []
 
     def add_game(self, game):
@@ -660,10 +955,10 @@ class CanniballsCornersDisruption(object):
 
 
     def _init_disruption(self,width,height):
-        """TODO: Docstring for init_disruption.
+        """Initialize disruption
 
-        :arg1: TODO
-        :returns: TODO
+        :width: int: Width of grid
+        :height: int: height of grid
 
         """
         # Generate the surrounding walls
@@ -703,7 +998,9 @@ class Canniballs(CameleonEnv):
                  max_steps = 300,
                  agent_init_space = 1,
                  replenish_food = True,
+                 agent_range_squeeze = 1,
                  disruptions = [],
+                 disruptions_only = False,
                  score_roster = {"agent":1,
                                  "food":0,
                                  "random_walker":1,
@@ -719,6 +1016,8 @@ class Canniballs(CameleonEnv):
         self.alive_canniballs = 0
         self.score_roster = score_roster
         self.replenish_food = replenish_food
+        self.agent_range_squeeze = agent_range_squeeze
+        self.disruptions_only = disruptions_only
 
         # Initialize everything
         super().__init__(grid_size = size,disruptions=disruptions)
@@ -776,7 +1075,7 @@ class Canniballs(CameleonEnv):
 
         if self.live_disruption and not self.live_disruption.end_fn(self.live_disruption):
             self.live_disruption.active_timesteps += 1
-            return
+            return None
 
         elif self.live_disruption:
             self.live_disruption.alive = False
@@ -788,14 +1087,16 @@ class Canniballs(CameleonEnv):
         else:
             disruption = self.disruptions_active()
             if disruption:
-                disruption.place_objs()
                 self.live_disruption = disruption
-                self.disruptions.remove(disruption)
                 self.live_disruption.agent_init_pos = self.agent.cur_pos
                 self.dormant_grid = self.grid
-                self.dormant_canniballs = self.canniballs
                 self.grid = self.live_disruption.grid
+                disruption.place_objs()
+                self.disruptions.remove(disruption)
+                self.dormant_canniballs = self.canniballs
                 self.canniballs = self.live_disruption.canniballs
+
+        return ((not self.live_disruption) and len(self.disruptions) == 0)
 
 
     def _place_obj(self, obj,
@@ -988,11 +1289,19 @@ class Canniballs(CameleonEnv):
         return (((pos[0] >=0) and (pos[0] < self.width)) and
                 (pos[1] >= 0) and (pos[1] < self.height))
 
+    def reset(self):
+        """Reset, inherits from parent
+
+        """
+        super().reset()
+        self.check_disruptions()
+        return self.gen_obs()
+
 
     def step(self,action):
         """Step function to step environment
 
-        :action: TODO
+        :action: action_space.Action: Action by agent
 
         """
         done = False
@@ -1083,13 +1392,12 @@ class Canniballs(CameleonEnv):
 
         # Check for an updated state on disruptions
         # This may also revert things back to normal
-        self.check_disruptions()
+        if self.disruptions_only:
+            done = (self.check_disruptions() or done)
 
         obs = self.gen_obs()
 
         return obs, reward, done, {}
-
-
 
 #################################################################################
 #   Subclass Cameleon Environments for Canniballs
@@ -1229,6 +1537,60 @@ class CanniballsEnvMedium12x12(Canniballs):
                                  "chaser":5}
                          )
 
+
+class CanniballsEnvMediumNstepAvoidance12x12(Canniballs):
+
+    """Small minigrid environment
+    for canniballs with med env dynamics
+    and avoidance disruption"""
+
+    def __init__(self):
+        super().__init__(size = 12,
+                         n_food = 4,
+                         n_random_walkers=3,
+                         n_bouncers=2,
+                         n_chasers=1,
+                         replenish_food=False,
+                         agent_init_space = 0,
+                         agent_range_squeeze=2,
+                         disruptions_only=True,
+                         disruptions=[CanniballsNstepAvoidanceDisruption(
+                                        n=500,
+                                        num_objs=3)
+                                      ],
+                         score_roster = {"agent":1,
+                                 "food":0,
+                                 "random_walker":2,
+                                 "bouncer":4,
+                                 "chaser":5}
+                         )
+
+
+class CanniballsEnvMediumNstepConsumption12x12(Canniballs):
+
+    """Small minigrid environment
+    for canniballs with med env dynamics
+    and avoidance disruption"""
+
+    def __init__(self):
+        super().__init__(size = 12,
+                         n_food = 4,
+                         n_random_walkers=3,
+                         n_bouncers=2,
+                         n_chasers=1,
+                         replenish_food=False,
+                         agent_init_space = 0,
+                         disruptions_only=True,
+                         disruptions=[CanniballsNstepConsumptionDisruption(
+                                        num_objs=5)
+                                      ],
+                         score_roster = {"agent":1,
+                                 "food":0,
+                                 "random_walker":2,
+                                 "bouncer":4,
+                                 "chaser":5}
+                         )
+
 class CanniballsEnvHard12x12(Canniballs):
 
     """Small minigrid environment
@@ -1283,6 +1645,17 @@ register(
 register(
     id='Cameleon-Canniballs-Hard-Corner-Disruption-12x12-v0',
     entry_point='cameleon.envs:CanniballsEnvHardCornerDisruption12x12'
+)
+
+register(
+    id='Cameleon-Canniballs-Medium-NStep-Avoidance-12x12-v0',
+    entry_point='cameleon.envs:CanniballsEnvMediumNstepAvoidance12x12'
+)
+
+
+register(
+    id='Cameleon-Canniballs-Medium-NStep-Consumption-12x12-v0',
+    entry_point='cameleon.envs:CanniballsEnvMediumNstepConsumption12x12'
 )
 
 register(

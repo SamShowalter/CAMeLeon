@@ -42,7 +42,7 @@ class CameleonInterestingnessAgent(Agent):
                  framework,
                  outdir = "data/interestingness/",
                  action_factors = ['left','right','up','down'],
-                 rollout_regex =r'[a-z\d]*_cp(\d+)_s(\d+)_r*(.+).[ph]kl',
+                 rollout_regex =r'[a-z\d]*_cp(\d+)_s(\d+)_r*(.+)_pid(\d+)-(\d+).[ph]kl',
                  use_hickle = False,
                  seed = None):
         Agent.__init__(self, seed)
@@ -131,6 +131,7 @@ class CameleonInterestingnessAgent(Agent):
                                 rollout_name     = name,
                                 rollout_timestep = timestep,
                                 rollout_tag      = name.split("_")[0],
+                                agent_pos        = t.get('agent_pos',None),
                                 value            = t.get("value_function",None),
                                 action_values    = t.get("q_values",None),
                                 next_obs         = t.get("next_observation",None),
@@ -268,8 +269,6 @@ class CameleonInterestingnessAgent(Agent):
 
     def get_counterfactuals(self):
         """Get counterfactuals
-
-        :returns: TODO
 
         """
         pass

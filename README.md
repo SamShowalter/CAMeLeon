@@ -47,6 +47,7 @@
     + [Interestingness Analysis on Many Rollouts](#ixdrl_experiment)
 - [Cameleon Environments](#environments)
     + [Canniballs](#canniballs)
+    + [Disruptions](#disruptions)
 - [Artifacts](#artifacts)
 - [Examples](#examples)
     + [DQN + Canniballs-Easy-12x12](#dqn_canniballs_easy)
@@ -138,7 +139,7 @@ python -m cameleon.bin.manual_control \
   --key-handler = ${str:  default = "cameleon": String denoted type of keyboard handler. Supports ['cameleon','minigrid']} \
   --seed        = ${int:  default = 42:         Random seed that governs game execution}  \
   --tile-size   = ${int:  default = 32:         Pixel size of each RGB tile.} \
-  --verbose     = ${bool: default = True:       Option to see console output after each move (action, reward, step_num, etc.) \
+  --log-level   = ${bool: default = "info":   Set log level for execution. Can be 'warn','info','debug','critical'}\
 ```
 
 <a name = "benchmark"></a>
@@ -159,6 +160,7 @@ python -m cameleon.bin.benchmark \
   --num-viz-frames = ${int:  default = 1000:            Number of visual frames to cycle through in ...} \
   --num-resets     = ${int:  default = 1000:            Number of resets to cycle through in ...} \
   --visual         = ${bool: default = False:           Whether or not to test visual frame speed. This is not applicable to RLlib training and is slow}
+  --log-level      = ${bool: default = "info":          Set log level for execution. Can be 'warn','info','debug','critical'}\
 ```
 
 <a name = "agent_training"></a>
@@ -188,7 +190,7 @@ python -m cameleon.bin.train \
   --checkpoint-path   = ${str:  default = None:            Model checkpoint filepath} \
   --checkpoint-epochs = ${int:  default = 10:              How often (in epochs) to make a model checkpoint} \
   --framework         = ${str:  default = 'torch':         Model framework -> ('tf1', 'tf2', 'torch')} \
-  --verbose           = ${bool: default = True:            Whether or not to show progress updates}
+  --log-level         = ${bool: default = "info":          Set log level for execution. Can be 'warn','info','debug','critical'}\
   --config            = ${JSON: default = "{}":            RLlib config} \
   --outdir            = ${str:  default = 'models/':       Root directory to store model checkpoints}\
   --seed              = ${int:  default = 42:              Random seed that governs training execution}  \
@@ -232,6 +234,7 @@ python -m cameleon.bin.rollout \
   --store-video = ${bool: default = True:            Boolean indicating whether MP4 videos of rollouts will be saved} \
   --no-render   = ${bool: default = True:            Whether or not to render the rollouts live. Bad idea, this would be really slow} \
   --no-frame    = ${bool: default = True:            Whether or not to store visual frame of the gameboard. This takes up lots of memory, so compress with hickle} \
+  --log-level   = ${bool: default = "info":          Set log level for execution. Can be 'warn','info','debug','critical'}\
   --use-hickle  = ${bool: default = True:            Compress data with hickle, an HDF5 version of pickle} \
 ```
 
@@ -253,6 +256,7 @@ python -m cameleon.bin.analyze_interestingness \
   --action-factors  = ${str:  default = "direction":             Semantic grouping of actions (e.g. direction, manipulation, etc.)} \
   --analysis-config = ${JSON: default = "{}":                    Interestingness0IXDRL config for analysis} \
   --img-format      = ${str:  default = "pdf":                   Format with which to save interestingness result plots} \
+  --log-level       = ${bool: default = "info":                  Set log level for execution. Can be 'warn','info','debug','critical'}\
   --clear           = ${bool: default = False:                   Whether or not to clear destination directory} \
 
 ```
@@ -277,6 +281,7 @@ python -m cameleon.bin.transfer_artifacts \
   --overwrite          = ${bool: default = False:                                                             Whether or not to overwrite existing filenames with new ones on archive and server} \
   --project-root       = ${str:  default = "../../../":                                                       Relative path to project root from execution file. This should rarely, if ever, be changed}  \
   --archive            = ${str:  default = "archive":                                                         Name of the directory that be generated to store all archived, zipped information}
+  --log-level          = ${bool: default = "info":                                                            Set log level for execution. Can be 'warn','info','debug','critical'}
 ```
 
 
@@ -397,6 +402,17 @@ Moreover, though given no explicit reward signal for efficiency (agent is not pe
 
 Though simple, this demonstration also depicts the agents ability to quickly flip between "chase" and "flee", sometimes conducting both at the same time. For example, the red Canniball gives chase when the agent comes close during its search for food. As it approaches, the agent zig-zags around to evade the Canniballs while also consuming weaker opponents and food. Afterwards, the agent then ceases evasion and attacks the read Canniball directly. Furthermore, all of this is completed quickly and efficiently.
 
+
+<a name = "disruptions"></a>
+## Disruptions
+
+**Disruptions** are not an environment, but rather an object that you can insert into one. Disruptions are not explicitly tied to Canniballs; they are constructed in a modular manner such that they can be embedded in any game/environment that you construct. The intended goal of disruptions is to investigate changes in the agent's internal state when presented with a situation it has not previously seen. Though disruptions can be included as part of training, in general they were intended to serve as "unseen" situations a trained agent has never been exposed to. In particular, they can be utilized to investigate the robustness of RL agents. Some examples of these disruptions can be seen below.
+
+Normal Canniballs Environment|  Food-in-corners Disruption | Four Chasers Disruption
+:-------------------------:|:-------------------------:|:-------------------------:
+![](images/normal_canniballs.gif)  |  ![](images/food_in_corners.gif) | ![](images/four_chasers_disruption.gif)
+
+
 <a name = "artifacts"></a>
 # Cameleon Artifacts
 
@@ -433,7 +449,7 @@ DQN with RLlib's default configuration is known to converge well on `Canniballs-
 **TLDR**: The best way to run a full pipeline is with `framework=torch`. If you use `tf2` (tensorflow eager execution), you will likely experience a memory leak in Ray's rollout workers than may crash your system eventually. Plan checkpoints accordingly. Under the same conditions, there is no memory leak with a tf1 model, but tf1 rollout performance is over 10x slower than tf2 agents due to needing to run the entire session graph nest for each saved rollout output from the model separately. Moreover, we have not yet found an effective way to automatically port a TF1 checkpoint into TF2. 
 
 ### Training:
-- Due to a [known bug](https://github.com/ray-project/ray/issues/16715) in the most recent RLlib release, training agents with `framework=torch` is broken. The bug is in triage and hopefully will be fixed soon. Cameleon creators have added a patch by which torch policies may be used, but the patch is somewhat machine dependent and not robust. Reach out to the creators if you experience bugs. UPDATE: This bug has been fixed but has not yet been included in a stable release of RLlib.
+- Due to a [known bug](https://github.com/ray-project/ray/issues/16715) in the most recent RLlib release, training agents with `framework=torch` is broken. The bug is in triage and hopefully will be fixed soon. Cameleon creators have added a patch by which torch policies may be used, but the patch is somewhat machine dependent and not robust. Reach out to the creators if you experience bugs. UPDATE: This bug has been fixed but has not yet been included in a stable release of RLlib. Reach out of you have issues.
 - Training with tf2 and eager execution will cause a memory leak during training. The CPU RAM will progressively swell amongst all the workers during training and eventually terminate. This issue has been seen some before with RLlib, but there is no clear identification of the issue or when / if it will be fixed. A Cameleon-specific patch is also being explored.
 - Although not a Cameleon issue per se, RLlib's model-based algorithms do not support discrete action spaces and are therefore not yet supported with Cameleon.
 
@@ -441,7 +457,8 @@ DQN with RLlib's default configuration is known to converge well on `Canniballs-
 - While it is possible to extract rollout information using `framework=tf1` (lazy execution) models, the implementation is currently inefficient and slow due to the overhead of repeatedly evaluating a large session graph. Fixes of this issue have not yet been successful under the current Cameleon design pattern. We recommend instead to use Tensorflow 2 models or PyTorch.
 - RLlib and Gym monitors do not provide easy control of the artifacts they generate. Therefore, during rollout storage a cleanup script runs and clears out many of the unnecessary files. In the future it would be ideal to more directly control this behavior.
 - RLlib callbacks do not store the initial observation state by default, so Cameleon has written code to allow it. To honor this functionality, any wrappers that you create for your environment should have a `gen_obs()` method that will return the wrapped observation seen by the agent.
-- Rollout sessions that also same the image frame of the environment state can be quite large. We have optimized compression of rollouts with `hickle` and GZIP compression, but expect 100 rollouts to still be roughly 200MB compressed (~1.6GB uncompressed). By default, we set `--no-frame=True` to avoid inadvertant OOM issues.
+- Though not an issue per-se, rollouts with the same random seed, though identical, may complete in different amounts of time. That is, if you run the same rollout command with different models, you will **always** get at least the number of identical rollouts specified, but then an indeterminate number of rollouts for which there is no match in other models. We handle this issue by running a reconciliation step to align rollouts across models during the cleanup script.
+- Rollout sessions that also same the image frame of the environment state can be quite large. We have optimized compression of rollouts with `hickle` and GZIP compression, but expect 100 rollouts to still be roughly 200MB compressed (~1.6GB uncompressed). By default, we set `--no-frame=True` to avoid inadvertant OOM issues. We also provide a method for reconstructing the encoded frame (much smaller np.array) into the RGB visual frame. We recommend utilizing this functionality if you do not need visual frames for every episode and timestep. Moreover, for small amounts of data pickle compresses far faster.
 
 <a name = "tips"></a>
 # Usage and Debugging Tips
@@ -450,7 +467,6 @@ DQN with RLlib's default configuration is known to converge well on `Canniballs-
 - RLlib only supports two types of models out of the box for the core policy: MLPs and Convolutional models. In the latter case, the dimensionality of the environment and specific conv filter sizes / strides must be provided if the size differs from (84,84,k) or (42,42,k). With that said, many agents support LSTM, RNN, Attention, and other model augmentations of the core model with wrapping.
 
 ### Rollouts:
-- Cameleon rollouts from a checkpoint (which already has a configuration) will also read in a user-provided config file. This is not recommended - parts of this configuration will be overwritten if config kwargs are explicitly passed by the user.
 - RLlib is sensitive to filepaths and does not provide intuitive errors. The first thing to check if experiencing an error is your checkpoint filepath.
 - Sometimes RLlib will inexplicably present a filepath error during rollouts, usually specifying a JSON file. Running the script again with no change usually resolves this.
 - If you specify multiple stopping criteria, the one with the _lowest_ granularity will be chosen (e.g. timesteps > episodes > epochs).
@@ -467,7 +483,10 @@ DQN with RLlib's default configuration is known to converge well on `Canniballs-
 <a name = "support"></a>
 # Support
 
-If you have questions or issues with this package, you may post an issue or contact [Sam Showalter](mailto:samuelrshowalter@gmail.com) or [Melinda Gervasio](mailto:melinda.gervasio@sri.com). 
+If you have questions or issues with this package, you may post an issue or contact [Sam Showalter](mailto:samuelrshowalter@gmail.com) or [Melinda Gervasio](mailto:melinda.gervasio@sri.com). If you still would like additional information about CAMeLeon that is not satisfied by this README, feel free to take a look at some of our other presentation materials (ppt. and video recordings).
+
+- Presentation PDF: [LINK](https://drive.google.com/file/d/1CZxOMI-1ZKDK7YWuLNYEdt95GTmcX5xi/view?usp=sharing)
+- Presentation MP4: [LINK](https://drive.google.com/file/d/1K04PmX50klLvMKmB4geE2WlMpYBYBYU6/view?usp=sharing)
 
 
 
