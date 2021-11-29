@@ -61,7 +61,7 @@
 
 > `CAMeLeon` is a user-friendly research and development tool built to standardize RL competency assessment for custom agents and environments.
 
-It's ultimate goals are as follows:
+Its ultimate goals are as follows:
 1. Provide a general grid-based interface upon which gridworld games of arbitrary complexity may be built (though any simulation can be adapted).
 2. Seamlessly integrate the general Cameleon environment interface with RLlib's distributed, highly optimized training and rollout system 
 3. Ensure that arbitrary model-free (and eventually, model-based) RL algorithms may be trained on Cameleon environments through a standard CLI / API.
